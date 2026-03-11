@@ -8,6 +8,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
 import AppPage from "./pages/AppPage";
+import DashboardPage from "./pages/DashboardPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,11 @@ const App = () => (
             <Route path="/app" element={
               <ProtectedRoute>
                 <AppPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <DashboardPage />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />

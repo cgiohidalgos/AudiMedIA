@@ -7,7 +7,8 @@ from app.models.user import User
 from app.models.patient import PatientCase
 from app.models.audit import ChatMessage
 from app.schemas.audit import ChatRequest, ChatResponse
-from app.api.v1.deps import get_current_user
+from app.api.v1.deps import get_current_user, require_role
+from app.models.user import AppRole
 from app.services.ai.chat_service import answer_question
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 async def chat_with_historia(
     payload: ChatRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(AppRole.admin, AppRole.auditor, AppRole.coordinador)),
 ):
     result = await db.execute(select(PatientCase).where(PatientCase.id == payload.patient_id))
     patient = result.scalar_one_or_none()

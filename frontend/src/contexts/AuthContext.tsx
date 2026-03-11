@@ -10,6 +10,11 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => void;
+  hasRole: (roles: AppRole | AppRole[]) => boolean;
+  isAdmin: boolean;
+  isAuditor: boolean;
+  isCoordinador: boolean;
+  isEquipoMedico: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,6 +24,11 @@ const AuthContext = createContext<AuthContextType>({
   signIn: async () => {},
   signUp: async () => {},
   signOut: () => {},
+  hasRole: () => false,
+  isAdmin: false,
+  isAuditor: false,
+  isCoordinador: false,
+  isEquipoMedico: false,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -56,6 +66,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   };
 
+  const hasRole = (roles: AppRole | AppRole[]) => {
+    if (!user?.role) return false;
+    const roleArray = Array.isArray(roles) ? roles : [roles];
+    return roleArray.includes(user.role);
+  };
+
+  const isAdmin = user?.role === 'admin';
+  const isAuditor = user?.role === 'auditor';
+  const isCoordinador = user?.role === 'coordinador';
+  const isEquipoMedico = user?.role === 'equipo_medico';
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -64,6 +85,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       signIn,
       signUp,
       signOut,
+      hasRole,
+      isAdmin,
+      isAuditor,
+      isCoordinador,
+      isEquipoMedico,
     }}>
       {children}
     </AuthContext.Provider>

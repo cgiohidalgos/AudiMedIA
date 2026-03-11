@@ -9,7 +9,8 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.audit import AuditSession, DocumentStatus
 from app.schemas.audit import UploadResponse
-from app.api.v1.deps import get_current_user
+from app.api.v1.deps import get_current_user, require_role
+from app.models.user import AppRole
 from app.core.config import settings
 from app.workers.pdf_worker import process_pdf_task
 
@@ -23,7 +24,7 @@ async def upload_pdfs(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(AppRole.admin, AppRole.auditor)),
 ):
     if len(files) > 5:
         raise HTTPException(status_code=400, detail="Máximo 5 PDFs simultáneos")

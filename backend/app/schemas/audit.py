@@ -65,3 +65,90 @@ class DashboardMetrics(BaseModel):
     riesgo_alto: int
     pendientes_resueltos: int
     tiempo_promedio_auditoria_min: float
+
+
+class TarifaConfigRead(BaseModel):
+    id: str
+    tarifa_dia_hospitalizacion: float
+    tarifa_dia_uci: float
+    porcentaje_glosas_historico: float
+    glosa_evolucion_porcentaje: float
+    valor_promedio_glosa: float
+    institucion_nombre: str
+    activo: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TarifaConfigUpdate(BaseModel):
+    tarifa_dia_hospitalizacion: Optional[float] = None
+    tarifa_dia_uci: Optional[float] = None
+    porcentaje_glosas_historico: Optional[float] = None
+    glosa_evolucion_porcentaje: Optional[float] = None
+    valor_promedio_glosa: Optional[float] = None
+    institucion_nombre: Optional[str] = None
+
+
+class DashboardFinanciero(BaseModel):
+    """Dashboard financiero avanzado con múltiples métricas"""
+    
+    # Período
+    periodo_tipo: str  # 'dia', 'semana', 'mes', 'anio'
+    fecha_inicio: datetime
+    fecha_fin: datetime
+    
+    # KPIs principales
+    glosas_evitadas_mes_cop: float
+    glosas_evitadas_anio_cop: float
+    estancias_prolongadas_dias: int
+    ahorro_estancia_mes_cop: float
+    
+    # Métricas operacionales
+    historias_auditadas_periodo: int
+    tasa_riesgo_alto_porcentaje: float
+    pendientes_resueltos_porcentaje: float
+    tiempo_promedio_auditoria_min: float
+    
+    # Desglose financiero
+    ahorro_por_estancia: float
+    ahorro_por_procedimientos: float
+    ahorro_por_medicamentos: float
+    ahorro_por_evoluciones: float
+    
+    # ROI y proyecciones
+    roi_periodo: float
+    proyeccion_ahorro_anual: float
+
+
+class MetricaTemporal(BaseModel):
+    """Métrica para series temporales (gráficos)"""
+    fecha: datetime
+    valor: float
+    etiqueta: str
+
+
+class DashboardGraficos(BaseModel):
+    """Datos para gráficos del dashboard"""
+    
+    # Tendencia de glosas evitadas
+    glosas_tiempo: List[MetricaTemporal]
+    
+    # Ahorro acumulado
+    ahorro_acumulado: List[MetricaTemporal]
+    
+    # Distribución por módulo
+    hallazgos_por_modulo: dict[str, int]
+    
+    # Comparativo por servicio
+    ahorro_por_servicio: dict[str, float]
+
+
+class ExportRequest(BaseModel):
+    """Request para exportación de reportes"""
+    formato: str  # 'pdf' o 'excel'
+    periodo_inicio: datetime
+    periodo_fin: datetime
+    incluir_graficos: bool = True
+    incluir_detalle_pacientes: bool = False

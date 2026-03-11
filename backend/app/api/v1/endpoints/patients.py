@@ -8,7 +8,8 @@ from app.models.patient import PatientCase
 from app.models.audit import AuditFinding
 from app.schemas.patient import PatientCaseRead, PatientCaseSummary
 from app.schemas.audit import AuditFindingRead, AuditFindingUpdate
-from app.api.v1.deps import get_current_user
+from app.api.v1.deps import get_current_user, require_role
+from app.models.user import AppRole
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -55,7 +56,7 @@ async def update_finding(
     finding_id: str,
     payload: AuditFindingUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_role(AppRole.admin, AppRole.auditor)),
 ):
     result = await db.execute(
         select(AuditFinding).where(
