@@ -39,6 +39,25 @@ const AppPage = () => {
               <User className="h-3 w-3" />
               {user?.email} · {roleLabel}
             </span>
+            
+            {/* Botón Dashboard - visible para admin y coordinador */}
+            {(role === 'admin' || role === 'coordinador') && (
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
+              >
+                Dashboard Financiero
+              </button>
+            )}
+            
+            {/* Botón para ir a ver resultados */}
+            <button
+              onClick={() => setView('results')}
+              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
+            >
+              Ver resultados
+            </button>
+            
             <button onClick={signOut} className="text-muted-foreground hover:text-foreground" title="Cerrar sesión">
               <LogOut className="h-3.5 w-3.5" />
             </button>
