@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/components/RoleGuard';
+import { useNavigate } from 'react-router-dom';
 import UploadScreen from '@/components/UploadScreen';
 import PatientSidebar from '@/components/PatientSidebar';
 import AnalysisPane from '@/components/AnalysisPane';
@@ -12,7 +14,9 @@ type View = 'upload' | 'results' | 'control';
 
 const AppPage = () => {
   const { user, role, signOut } = useAuth();
-  const [view, setView] = useState<View>('upload');
+  const permissions = usePermissions();
+  const navigate = useNavigate();
+  const [view, setView] = useState<View>(permissions.canUpload ? 'upload' : 'results');
   const [selectedPatientId, setSelectedPatientId] = useState(mockPatients[0].id);
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -24,7 +28,7 @@ const AppPage = () => {
     role === 'coordinador' ? 'Coordinador' :
     role === 'equipo_medico' ? 'Equipo Médico' : 'Usuario';
 
-  if (view === 'upload') {
+  if (view === 'upload' && permissions.canUpload) {
     return (
       <div className="min-h-screen bg-background">
         {/* User bar */}
@@ -71,18 +75,30 @@ const AppPage = () => {
             <User className="h-3 w-3" />
             {roleLabel}
           </span>
-          <button
-            onClick={() => setView('control')}
-            className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
-          >
-            Cuadro de control
-          </button>
-          <button
-            onClick={() => setView('upload')}
-            className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
-          >
-            Nueva carga
-          </button>
+          {permissions.canViewDashboard && (
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
+            >
+              Dashboard Financiero
+            </button>
+          )}
+          {permissions.canViewDashboard && (
+            <button
+              onClick={() => setView('control')}
+              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
+            >
+              Cuadro de control
+            </button>
+          )}
+          {permissions.canUpload && (
+            <button
+              onClick={() => setView('upload')}
+              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
+            >
+              Nueva carga
+            </button>
+          )}
           <button onClick={signOut} className="text-muted-foreground hover:text-foreground" title="Cerrar sesión">
             <LogOut className="h-3.5 w-3.5" />
           </button>
