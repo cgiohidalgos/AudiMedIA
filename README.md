@@ -1,73 +1,148 @@
-# Welcome to your Lovable project
+# AudiMedIA
 
-## Project info
+Sistema de auditoría médica concurrente con inteligencia artificial para instituciones hospitalarias colombianas.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Estructura del proyecto
 
-## How can I edit this code?
+```
+AudiMedIA/
+├── frontend/          # React + Vite + Tailwind + shadcn/ui
+├── backend/           # Python FastAPI + SQLite
+├── docker-compose.yml # Orquestación local completa
+└── README.md
+```
 
-There are several ways of editing your application.
+## Stack tecnológico
 
-**Use Lovable**
+| Capa | Tecnología |
+|------|-----------|
+| Frontend | React 18, Vite, Tailwind CSS, shadcn/ui |
+| Backend | Python 3.12, FastAPI, SQLAlchemy (async) |
+| Base de datos | SQLite (aiosqlite) |
+| IA | OpenAI GPT-4o (extracción + chat) |
+| PDF | PyMuPDF + Tesseract OCR |
+| Auth | JWT + RBAC (admin / auditor / coordinador) |
+| Infra | Docker + docker-compose |
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Inicio rápido
 
-Changes made via Lovable will be committed automatically to this repo.
+### 1. Configurar variables de entorno
 
-**Use your preferred IDE**
+```bash
+cp backend/.env.example backend/.env
+# Editar backend/.env y agregar OPENAI_API_KEY
+```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### 2. Levantar con Docker
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+```bash
+docker-compose up --build
+```
 
-Follow these steps:
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000/api/v1
+- Documentación API: http://localhost:8000/api/docs
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### 3. Desarrollo local (sin Docker)
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+**Backend:**
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+**Frontend:**
+```bash
+cd frontend
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Arquitectura del backend
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```
+backend/
+├── app/
+│   ├── main.py                    # Entry point FastAPI
+│   ├── core/
+│   │   ├── config.py              # Settings con pydantic-settings
+│   │   └── security.py            # JWT + bcrypt
+│   ├── db/
+│   │   └── session.py             # AsyncSession + Base ORM
+│   ├── models/
+│   │   ├── user.py                # Usuario + roles RBAC
+│   │   ├── patient.py             # Historia clínica / caso
+│   │   └── audit.py               # Sesión, hallazgos, chat
+│   ├── schemas/                   # Pydantic I/O schemas
+│   ├── api/v1/
+│   │   ├── deps.py                # Auth dependencies
+│   │   ├── router.py              # Router principal
+│   │   └── endpoints/
+│   │       ├── auth.py            # Login / registro
+│   │       ├── users.py           # Gestión usuarios (admin)
+│   │       ├── upload.py          # Carga de PDFs
+│   │       ├── patients.py        # Historias + hallazgos
+│   │       ├── chat.py            # Chat con historia
+│   │       └── dashboard.py       # Métricas financieras
+│   ├── services/
+│   │   ├── ai/
+│   │   │   ├── extractor.py       # Extracción variables (LLM)
+│   │   │   ├── audit_modules.py   # 4 módulos de auditoría
+│   │   │   └── chat_service.py    # Chat RAG con historia
+│   │   └── document/
+│   │       ├── pdf_extractor.py   # PyMuPDF + Tesseract OCR
+│   │       └── anonymizer.py      # Anonimización PII
+│   └── workers/
+│       └── pdf_worker.py          # Pipeline completo de procesamiento
+├── requirements.txt
+├── Dockerfile
+└── .env.example
+```
 
-**Use GitHub Codespaces**
+## API endpoints
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/api/v1/auth/register` | Registrar usuario |
+| POST | `/api/v1/auth/login` | Iniciar sesión |
+| GET | `/api/v1/users/me` | Perfil del usuario actual |
+| POST | `/api/v1/upload/` | Cargar PDFs (máx. 5) |
+| GET | `/api/v1/upload/status/{id}` | Estado del procesamiento |
+| GET | `/api/v1/patients/` | Listar pacientes auditados |
+| GET | `/api/v1/patients/{id}` | Detalle del paciente |
+| GET | `/api/v1/patients/{id}/findings` | Hallazgos de auditoría |
+| PATCH | `/api/v1/patients/{id}/findings/{fid}` | Marcar hallazgo resuelto |
+| POST | `/api/v1/chat/` | Chat con historia clínica |
+| GET | `/api/v1/chat/history/{patient_id}` | Historial del chat |
+| GET | `/api/v1/dashboard/metrics` | Métricas financieras |
 
-## What technologies are used for this project?
+## Roles del sistema
 
-This project is built with:
+| Rol | Descripción |
+|-----|-------------|
+| `admin` | Gestión de usuarios, configuración del sistema |
+| `auditor` | Carga PDFs, analiza historias, usa el chat |
+| `coordinador` | Dashboard financiero, reportes ejecutivos |
+| `equipo_medico` | Ver pendientes de sus pacientes |
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Usuarios por defecto
 
-## How can I deploy this project?
+Al ejecutar `docker compose up` se crean automáticamente los siguientes usuarios (si no existen):
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+| Rol | Email | Password |
+|-----|-------|----------|
+| `admin` | admin@audiomedia.co | Admin1234 |
+| `auditor` | auditor@audiomedia.co | Auditor1234 |
+| `coordinador` | coordinador@audiomedia.co | Coordinador1234 |
+| `equipo_medico` | medico@audiomedia.co | Medico1234 |
 
-## Can I connect a custom domain to my Lovable project?
+## Normativa aplicada
 
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- Ley 1438 de 2011
+- Decreto 780 de 2016
+- Resolución 1995 de 1999 (historia clínica)
+- CIE-10 / CUPS
+- Guías clínicas MinSalud Colombia

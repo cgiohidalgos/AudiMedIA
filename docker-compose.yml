@@ -1,0 +1,32 @@
+services:
+  # ─── Backend FastAPI + SQLite ─────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: audiomedia_backend
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - uploads_data:/tmp/audiomedia/uploads
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ─── Frontend React/Vite ──────────────────────────────────────────
+  frontend:
+    image: node:20-alpine
+    container_name: audiomedia_frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host --port 5173"
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+
+volumes:
+  uploads_data:
