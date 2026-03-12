@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { X, Send } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Send, Loader2 } from 'lucide-react';
+import { chatApi } from '@/lib/api';
 
 interface ChatPanelProps {
+  patientId: string;
   patientLabel: string;
   onClose: () => void;
 }
@@ -17,21 +19,65 @@ const suggestions = [
   '¿Faltan reportes de estudios?',
 ];
 
-const ChatPanel = ({ patientLabel, onClose }: ChatPanelProps) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: `Chat activo para ${patientLabel}. Puede consultar cualquier aspecto de la historia clínica. Las respuestas incluirán referencia a la página del documento fuente.\n\nEsta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisión clínica profesional.` },
-  ]);
+const ChatPanel = ({ patientId, patientLabel, onClose }: ChatPanelProps) => {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
-    const userMsg: ChatMessage = { role: 'user', content: text };
-    const mockResponse: ChatMessage = {
-      role: 'assistant',
-      content: `Con base en la ${patientLabel}, se encontró información relevante. La evolución médica del día 06/03 documenta mejoría clínica parcial (página 18). Se recomienda verificar con el equipo tratante.\n\nEsta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisión clínica profesional.`,
+  // Cargar historial al montar el componente
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        setIsLoadingHistory(true);
+        const history = await chatApi.history(patientId);
+        if (history.length === 0) {
+          // Mensaje de bienvenida si no hay historial
+          setMessages([{
+            role: 'assistant',
+            content: `Chat activo para ${patientLabel}. Puede consultar cualquier aspecto de la historia clínica. Las respuestas incluirán referencia a la página del documento fuente.\n\nEsta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisión clínica profesional.`
+          }]);
+        } else {
+          setMessages(history);
+        }
+      } catch (error) {
+        console.error('Error cargando historial:', error);
+        setMessages([{
+          role: 'assistant',
+          content: 'Error cargando el historial del chat. Por favor, intente nuevamente.'
+        }]);
+      } finally {
+        setIsLoadingHistory(false);
+      }
     };
-    setMessages(prev => [...prev, userMsg, mockResponse]);
+    loadHistory();
+  }, [patientId, patientLabel]);
+
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || isLoading) return;
+
+    const userMsg: ChatMessage = { role: 'user', content: text };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setIsLoading(true);
+
+    try {
+      const response = await chatApi.ask(patientId, text);
+      const assistantMsg: ChatMessage = {
+        role: 'assistant',
+        content: response.answer,
+      };
+      setMessages(prev => [...prev, assistantMsg]);
+    } catch (error) {
+      console.error('Error enviando mensaje:', error);
+      const errorMsg: ChatMessage = {
+        role: 'assistant',
+        content: 'Lo siento, hubo un error al procesar su pregunta. Por favor, intente nuevamente.',
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -58,15 +104,29 @@ const ChatPanel = ({ patientLabel, onClose }: ChatPanelProps) => {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((m, i) => (
-          <div key={i} className={`${m.role === 'user' ? 'ml-8' : 'mr-4'}`}>
-            <div className={`rounded-md p-3 text-sm font-body ${
-              m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground'
-            }`}>
-              {m.content}
+        {isLoadingHistory ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          messages.map((m, i) => (
+            <div key={i} className={`${m.role === 'user' ? 'ml-8' : 'mr-4'}`}>
+              <div className={`rounded-md p-3 text-sm font-body whitespace-pre-wrap ${
+                m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground'
+              }`}>
+                {m.content}
+              </div>
+            </div>
+          ))
+        )}
+        {isLoading && (
+          <div className="mr-4">
+            <div className="rounded-md p-3 text-sm font-body bg-secondary text-foreground flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Generando respuesta...</span>
             </div>
           </div>
-        ))}
+        )}
       </div>
 
       {/* Input */}
@@ -74,15 +134,21 @@ const ChatPanel = ({ patientLabel, onClose }: ChatPanelProps) => {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
+          onKeyDown={(e) => e.key === 'Enter' && !isLoading && sendMessage(input)}
           placeholder="Escriba su pregunta..."
-          className="flex-1 font-body text-sm bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          disabled={isLoading}
+          className="flex-1 font-body text-sm bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           onClick={() => sendMessage(input)}
-          className="bg-primary text-primary-foreground rounded-md p-2 hover:opacity-90 transition-opacity"
+          disabled={isLoading || !input.trim()}
+          className="bg-primary text-primary-foreground rounded-md p-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Send className="h-4 w-4" />
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
         </button>
       </div>
     </aside>

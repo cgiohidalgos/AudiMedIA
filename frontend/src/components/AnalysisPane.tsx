@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { PatientCase, AuditFinding } from '@/types/audit';
 import RiskBadge from '@/components/RiskBadge';
-import { ChevronDown, ChevronRight, FileText, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileText, CheckCircle2, AlertTriangle, Download } from 'lucide-react';
+import { patientsApi } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 interface AnalysisPaneProps {
   patient: PatientCase;
@@ -20,9 +22,41 @@ const AnalysisPane = ({ patient, onOpenChat, onTraceToSource }: AnalysisPaneProp
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({
     estancia: true, cie10: true, estudios: true, glosas: true,
   });
+  const [isDownloading, setIsDownloading] = useState(false);
+  const { toast } = useToast();
 
   const toggleModule = (mod: string) => {
     setOpenModules(prev => ({ ...prev, [mod]: !prev[mod] }));
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsDownloading(true);
+      const blob = await patientsApi.downloadOriginalPdf(patient.id);
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `historia_clinica_${patient.label}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: 'PDF descargado',
+        description: 'La historia clínica se descargó correctamente.',
+      });
+    } catch (error) {
+      console.error('Error al descargar PDF:', error);
+      toast({
+        title: 'Error al descargar',
+        description: error instanceof Error ? error.message : 'No se pudo descargar el PDF original.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const groupedFindings = patient.hallazgos.reduce<Record<string, AuditFinding[]>>((acc, f) => {
@@ -124,8 +158,13 @@ const AnalysisPane = ({ patient, onOpenChat, onTraceToSource }: AnalysisPaneProp
 
       {/* Actions */}
       <div className="flex gap-3 mt-6">
-        <button className="font-body text-sm border border-border rounded-md px-4 py-2 hover:bg-secondary transition-colors text-foreground">
-          Descargar PDF
+        <button
+          onClick={handleDownloadPdf}
+          disabled={isDownloading}
+          className="font-body text-sm border border-border rounded-md px-4 py-2 hover:bg-secondary transition-colors text-foreground disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          <Download className="h-4 w-4" />
+          {isDownloading ? 'Descargando...' : 'Descargar PDF Original'}
         </button>
         <button
           onClick={onOpenChat}

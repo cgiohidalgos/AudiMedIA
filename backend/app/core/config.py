@@ -1,6 +1,11 @@
 from pydantic_settings import BaseSettings
 from typing import List
 import json
+from pathlib import Path
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_SQLITE_DB = (BACKEND_DIR / "audiomedia.db").as_posix()
 
 
 class Settings(BaseSettings):
@@ -11,7 +16,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # CORS
-    ALLOWED_ORIGINS: str | List[str] = '["http://localhost:5173","http://localhost:3000","http://localhost:8080"]'
+    ALLOWED_ORIGINS: str | List[str] = '["http://localhost:5173","http://localhost:3000","http://localhost:8080","http://localhost:8081","http://localhost:8082","http://localhost:4173"]'
     
     @property
     def allowed_origins_list(self) -> List[str]:
@@ -23,8 +28,8 @@ class Settings(BaseSettings):
                 return [self.ALLOWED_ORIGINS]
         return self.ALLOWED_ORIGINS
 
-    # Database (SQLite por defecto)
-    DATABASE_URL: str = "sqlite+aiosqlite:///./audiomedia.db"
+    # Database (SQLite por defecto, fija al backend para no depender del cwd)
+    DATABASE_URL: str = f"sqlite+aiosqlite:///{DEFAULT_SQLITE_DB}"
 
     # Security / JWT
     SECRET_KEY: str = "changeme-in-production"
@@ -42,6 +47,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignorar variables extra como VITE_*
 
 
 settings = Settings()

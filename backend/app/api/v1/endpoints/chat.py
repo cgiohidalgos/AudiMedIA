@@ -25,6 +25,16 @@ async def chat_with_historia(
     if not patient:
         raise HTTPException(status_code=404, detail="Historia clínica no encontrada")
 
+    # Obtener historial ANTES de agregar el mensaje actual
+    history_result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.patient_id == payload.patient_id)
+        .order_by(ChatMessage.created_at.asc())
+        .limit(20)
+    )
+    history = history_result.scalars().all()
+
+    # Ahora sí guardar el mensaje del usuario
     user_msg = ChatMessage(
         id=str(uuid.uuid4()),
         patient_id=payload.patient_id,
@@ -34,14 +44,6 @@ async def chat_with_historia(
     )
     db.add(user_msg)
     await db.flush()
-
-    history_result = await db.execute(
-        select(ChatMessage)
-        .where(ChatMessage.patient_id == payload.patient_id)
-        .order_by(ChatMessage.created_at.asc())
-        .limit(20)
-    )
-    history = history_result.scalars().all()
 
     response = await answer_question(patient, payload.question, history)
 
