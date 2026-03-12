@@ -3,6 +3,9 @@ from datetime import datetime, date
 from typing import Optional, List, Any, Dict
 from app.models.patient import RiskLevel
 
+# Importar schemas de auditoría (evitar duplicación)
+from app.schemas.audit import AuditFindingRead, AuditFindingUpdate
+
 
 class PatientCaseRead(BaseModel):
     id: str
@@ -51,37 +54,7 @@ class PatientCaseSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ============================================================================
-# SCHEMAS DE AUDITORÍA
-# ============================================================================
-
-class AuditFindingRead(BaseModel):
-    """Schema para leer un hallazgo de auditoría."""
-    id: str
-    patient_id: str
-    modulo: str
-    categoria: Optional[str] = None
-    riesgo: str
-    descripcion: str
-    recomendacion: str
-    normativa_aplicable: Optional[str] = None
-    valor_glosa_estimado: Optional[float] = None
-    pagina: Optional[int] = None
-    estado: str = "activo"
-    resuelto: bool = False
-    fecha_resolucion: Optional[datetime] = None
-    notas_resolucion: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class AuditFindingUpdate(BaseModel):
-    """Schema para actualizar un hallazgo."""
-    estado: Optional[str] = None  # activo, resuelto, descartado
-    notas_resolucion: Optional[str] = None
-
+# NOTA: AuditFindingRead/Update ahora se importan desde schemas.audit para evitar duplicación
 
 class AuditSummaryResponse(BaseModel):
     """Resumen ejecutivo de auditoría de un paciente."""

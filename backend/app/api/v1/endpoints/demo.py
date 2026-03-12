@@ -4,11 +4,12 @@ Endpoint para crear casos de prueba sin necesidad de PDF.
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import date
 from app.db.session import get_db
-from app.models.user import User
+from app.models.user import User, AppRole
 from app.models.patient import PatientCase
 from app.models.audit import AuditFinding
-from app.api.v1.deps import get_current_user
+from app.api.v1.deps import get_current_user, require_role
 from app.services.ai.audit_modules import run_all_modules, calculate_risk, generate_audit_summary
 from app.schemas.patient import PatientCaseRead
 import uuid
@@ -19,15 +20,18 @@ router = APIRouter(prefix="/demo", tags=["demo"])
 @router.post("/create-sample-patient", response_model=PatientCaseRead)
 async def create_sample_patient(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(AppRole.admin, AppRole.coordinador, AppRole.auditor)),
 ):
     """
     Crea un paciente de prueba con historia clínica simulada.
     Ejecuta los 4 módulos de auditoría automáticamente.
     Útil para probar el sistema sin necesidad de subir un PDF real.
+    
+    NOTA: Endpoint restringido a admin, coordinador y auditor.
     """
     
     # Datos clínicos de ejemplo: Infarto Agudo de Miocardio
+    # Estructura compatible con extractor.py y audit_modules.py
     clinical_data = {
         "cama": "UCI-305",
         "edad": 68,
@@ -38,32 +42,42 @@ async def create_sample_patient(
         "fecha_ingreso": "2024-01-15",
         "dias_hospitalizacion": 18,
         "dias_esperados": 10,
+        "en_uci": True,
         "medicamentos": [
-            "Aspirina 100mg c/24h",
-            "Atorvastatina 80mg c/24h",
-            "Enalapril 10mg c/12h",
-            "Metoprolol 50mg c/12h"
+            {"nombre": "Aspirina", "dosis": "100mg", "frecuencia": "c/24h"},
+            {"nombre": "Atorvastatina", "dosis": "80mg", "frecuencia": "c/24h"},
+            {"nombre": "Enalapril", "dosis": "10mg", "frecuencia": "c/12h"},
+            {"nombre": "Metoprolol", "dosis": "50mg", "frecuencia": "c/12h"}
         ],
         "antecedentes": {
-            "cardiovasculares": ["HTA desde hace 5 años"],
-            "quirurgicos": []
+            "patologicos": ["HTA desde hace 5 años"],
+            "quirurgicos": [],
+            "familiares": []
         },
         "estudios_solicitados": [
-            "Ecocardiograma - Resultado: pendiente",
-            "Troponinas - Resultado: 8.5 ng/mL (elevadas)",
-            "Radiografía de tórax - Indicación: no clara"
+            {"nombre": "Ecocardiograma", "fecha": "2024-01-16", "resultado_disponible": False},
+            {"nombre": "Troponinas", "fecha": "2024-01-15", "resultado_disponible": True},
+            {"nombre": "Radiografía de tórax", "fecha": "2024-01-15", "resultado_disponible": True}
         ],
         "procedimientos": ["Cateterismo cardíaco con angioplastia"],
         "evoluciones": [
-            {"fecha": "2024-01-15", "nota": "Ingreso por dolor torácico"},
-            {"fecha": "2024-01-20", "nota": "Evolución favorable"}
-        ]
+            {"fecha": "2024-01-15", "resumen": "Ingreso por dolor torácico opresivo. Elevación ST en derivaciones anteriores. Inicio terapia antiagregante y anticoagulación."},
+            {"fecha": "2024-01-16", "resumen": "Post-cateterismo. Colocación de stent en descendente anterior. Estable hemodinámicamente."},
+            {"fecha": "2024-01-17", "resumen": "Evolución favorable. Troponinas en descenso. Continúa monitorización."},
+            {"fecha": "2024-01-20", "resumen": "Mejoría clínica. Sin dolor torácico. Candidato a egreso próximo."}
+        ],
+        "sintomas": ["dolor torácico", "disnea", "sudoración"],
+        "examenes_realizados": ["Troponinas", "ECG", "Radiografía de tórax"]
     }
     
     # Ejecutar módulos de auditoría
     findings = run_all_modules(clinical_data)
     risk_level = calculate_risk(findings)
     summary = generate_audit_summary(findings, clinical_data)
+    
+    # Convertir fecha_ingreso de string a date para el modelo
+    fecha_ingreso_str = clinical_data.get("fecha_ingreso")
+    fecha_ingreso_date = date.fromisoformat(fecha_ingreso_str) if fecha_ingreso_str else None
     
     # Crear paciente
     patient = PatientCase(
@@ -75,7 +89,7 @@ async def create_sample_patient(
         diagnostico_principal=clinical_data.get("diagnostico_principal"),
         codigo_cie10=clinical_data.get("codigo_cie10"),
         diagnosticos_secundarios=clinical_data.get("diagnosticos_secundarios", []),
-        fecha_ingreso=clinical_data.get("fecha_ingreso"),
+        fecha_ingreso=fecha_ingreso_date,
         dias_hospitalizacion=clinical_data.get("dias_hospitalizacion"),
         dias_esperados=clinical_data.get("dias_esperados"),
         riesgo=risk_level.value,

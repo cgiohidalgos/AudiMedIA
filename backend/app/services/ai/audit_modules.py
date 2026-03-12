@@ -95,17 +95,17 @@ def load_procedimientos_data() -> Dict:
 
 def get_codigo_cie10_base(codigo: str) -> str:
     """
-    Extrae el código base CIE-10 (3-4 primeros caracteres).
-    Ejemplos: I21.0 → I21, J18.9 → J18.9, K35.2 → K35.2
+    Extra el código base CIE-10 (3 primeros caracteres sin subcódigo).
+    Ejemplos: I21.0 → I21, J18.9 → J18, K35.2 → K35
     """
     if not codigo:
         return ""
     # Remover espacios y convertir a mayúsculas
     codigo = codigo.strip().upper()
-    # Si tiene punto, intentar mantener especificidad
-    if "." in codigo:
-        return codigo  # Retornar completo (ej: I21.0)
-    return codigo[:3]  # Solo primeros 3 caracteres
+    # Tomar siempre la parte antes del punto (si existe) como base
+    base = codigo.split(".", 1)[0]
+    # Retornar solo los primeros 3 caracteres de la base (categoría CIE-10)
+    return base[:3] if len(base) > 3 else base
 
 
 # ============================================================================
@@ -179,6 +179,21 @@ def analyze_estancia(patient_data: dict) -> List[Finding]:
     nombre_diagnostico = codigo_info.get("nombre", diagnostico)
     requiere_uci = codigo_info.get("requiere_uci", False)
     
+    # Proteger contra valores inválidos de dias_max (0 o negativos)
+    if not dias_max or dias_max <= 0:
+        # Sin referencia válida de días esperados
+        if dias_real > 10:
+            findings.append(Finding(
+                modulo=AuditModule.estancia,
+                descripcion=f"Estancia de {dias_real} días con referencia CIE-10 inválida (días_max={dias_max}). Requiere revisión manual.",
+                riesgo=RiskLevel.medio,
+                pagina=None,
+                recomendacion="Verificar pertinencia de hospitalización prolongada y documentar justificación clínica.",
+                normativa_aplicable="Guías clínicas institucionales",
+                categoria="estancia_sin_referencia_valida"
+            ))
+        return findings
+    
     # 1. Verificar estancia prolongada
     if dias_real > dias_max:
         exceso = dias_real - dias_max
@@ -196,10 +211,19 @@ def analyze_estancia(patient_data: dict) -> List[Finding]:
             riesgo = RiskLevel.bajo
         
         # Verificar si hay justificación en evoluciones
+        # Soportar diferentes nombres de campo: texto, resumen, nota
         tiene_justificacion = any(
-            "prolongad" in str(ev.get("texto", "")).lower() or 
-            "complicac" in str(ev.get("texto", "")).lower() or
-            "complejidad" in str(ev.get("texto", "")).lower()
+            (
+                lambda texto_ev: (
+                    "prolongad" in texto_ev
+                    or "complicac" in texto_ev
+                    or "complejidad" in texto_ev
+                )
+            )(
+                " ".join(
+                    str(ev.get(campo, "")) for campo in ("texto", "resumen", "nota")
+                ).lower()
+            )
             for ev in evoluciones
         )
         
@@ -523,7 +547,9 @@ def analyze_estudios(patient_data: dict) -> List[Finding]:
     procedimientos_ref = procedimientos_db.get("procedimientos_quirurgicos", {})
     
     estudios = patient_data.get("estudios_solicitados", [])
-    procedimientos = patient_data.get("procedimientos_realizados", [])
+    # Aceptar tanto "procedimientos_realizados" (documentado) como "procedimientos"
+    # (nombre usado por el extractor/pipeline), priorizando el más específico.
+    procedimientos = patient_data.get("procedimientos_realizados") or patient_data.get("procedimientos", [])
     codigo_cie10 = patient_data.get("codigo_cie10", "")
     diagnostico = patient_data.get("diagnostico_principal", "")
     dias_hospitalizacion = patient_data.get("dias_hospitalizacion", 0)
@@ -535,20 +561,30 @@ def analyze_estudios(patient_data: dict) -> List[Finding]:
         
         nombre = estudio.get("nombre", "").lower()
         resultado_disponible = estudio.get("resultado_disponible", False)
-        fecha_solicitud = estudio.get("fecha_solicitud")  # Formato: YYYY-MM-DD o datetime
+        # Soportar tanto 'fecha_solicitud' (nombre esperado) como 'fecha' (nombre usado por el extractor)
+        fecha_solicitud = estudio.get("fecha_solicitud") or estudio.get("fecha")  # Formato: YYYY-MM-DD o datetime
+        codigo_cups = estudio.get("codigo_cups")
         
         if not resultado_disponible:
             # Buscar en estudios_ref para ver tiempo esperado
             estudio_info = None
-            for  key, info in estudios_ref.items():
-                if key.lower() in nombre or nombre in key.lower():
-                    estudio_info = info
-                    break
+            # Primero, intentar por código CUPS si está disponible
+            if codigo_cups:
+                estudio_info = estudios_ref.get(codigo_cups) or laboratorio_ref.get(codigo_cups)
+            
+            # Si no se encontró por código, intentar matchear por nombre del estudio
+            if not estudio_info:
+                for info in estudios_ref.values():
+                    ref_nombre = str(info.get("nombre", "")).lower()
+                    if ref_nombre and (ref_nombre in nombre or nombre in ref_nombre):
+                        estudio_info = info
+                        break
             
             if not estudio_info:
-                # Buscar en laboratorio
-                for key, info in laboratorio_ref.items():
-                    if key.lower() in nombre or nombre in key.lower():
+                # Buscar en laboratorio por nombre
+                for info in laboratorio_ref.values():
+                    ref_nombre = str(info.get("nombre", "")).lower()
+                    if ref_nombre and (ref_nombre in nombre or nombre in ref_nombre):
                         estudio_info = info
                         break
             
@@ -569,7 +605,7 @@ def analyze_estudios(patient_data: dict) -> List[Finding]:
                     pass
             
             # Determinar riesgo
-            if dias_desde_solicitud:
+            if dias_desde_solicitud is not None:
                 if dias_desde_solicitud > 5:
                     riesgo = RiskLevel.alto
                 elif dias_desde_solicitud > 2:
@@ -716,7 +752,8 @@ def analyze_glosas(patient_data: dict) -> List[Finding]:
     medicamentos = patient_data.get("medicamentos", [])
     dias_hospitalizacion = patient_data.get("dias_hospitalizacion", 0) or 0
     estudios = patient_data.get("estudios_solicitados", [])
-    procedimientos = patient_data.get("procedimientos_realizados", [])
+    # Aceptar tanto "procedimientos_realizados" como "procedimientos"
+    procedimientos = patient_data.get("procedimientos_realizados") or patient_data.get("procedimientos", [])
     
     # 1. Verificar evoluciones médicas diarias (Res. 1995/1999)
     if dias_hospitalizacion > 0:
@@ -805,13 +842,26 @@ def analyze_glosas(patient_data: dict) -> List[Finding]:
             continue
         
         nombre_med = med.get("nombre", "sin nombre")
-        tiene_orden = med.get("orden_medica", False)
+        
+        # Compatibilidad con diferentes contratos de entrada:
+        # 1) Esquema antiguo: incluye `orden_medica` explícita.
+        # 2) Esquema del extractor: usa `nombre`/`dosis`/`frecuencia` sin `orden_medica`.
+        tiene_orden = med.get("orden_medica")
+        if tiene_orden is None:
+            # Si no hay bandera explícita, inferir orden a partir de la presencia de
+            # datos típicos de prescripción (dosis, frecuencia, vía, duración).
+            campos_orden = ("dosis", "frecuencia", "via", "duracion")
+            tiene_orden = any(
+                bool(str(med.get(campo, "")).strip()) for campo in campos_orden
+            )
+        
         indicacion = med.get("indicacion", "")
         
         if not tiene_orden:
             medicamentos_sin_orden.append(nombre_med)
         
-        if not indicacion or len(indicacion.strip()) < 5:
+        # Solo auditar indicación cuando el campo está presente en el payload.
+        if "indicacion" in med and (not indicacion or len(indicacion.strip()) < 5):
             medicamentos_sin_indicacion.append(nombre_med)
     
     if medicamentos_sin_orden:

@@ -41,7 +41,7 @@ const AppPage = () => {
             </span>
             
             {/* Botón Dashboard - visible para admin y coordinador */}
-            {(role === 'admin' || role === 'coordinador') && (
+            {permissions.canViewDashboard && (
               <button
                 onClick={() => navigate('/dashboard')}
                 className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"

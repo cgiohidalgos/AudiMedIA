@@ -79,16 +79,21 @@ async def get_patient_audit_summary(
         hallazgos_por_riesgo[finding.riesgo] = hallazgos_por_riesgo.get(finding.riesgo, 0) + 1
         hallazgos_por_modulo[finding.modulo] = hallazgos_por_modulo.get(finding.modulo, 0) + 1
     
+    # Asegurar que riesgo_global nunca sea None para cumplir con el esquema
+    riesgo_global = patient.riesgo_auditoria or "pending"
+    
     # Generar recomendación general
-    if patient.riesgo_auditoria == "alto":
+    if riesgo_global == "alto":
         recomendacion = "Se requiere revisión inmediata por el comité de auditoría. Hallazgos críticos detectados."
-    elif patient.riesgo_auditoria == "medio":
+    elif riesgo_global == "medio":
         recomendacion = "Requiere seguimiento y aclaraciones documentales en las próximas 48 horas."
+    elif riesgo_global == "pending":
+        recomendacion = "Auditoría pendiente de procesamiento."
     else:
         recomendacion = "Caso de bajo riesgo. Revisión de rutina recomendada."
     
     return AuditSummaryResponse(
-        riesgo_global=patient.riesgo_auditoria,
+        riesgo_global=riesgo_global,
         total_hallazgos=patient.total_hallazgos,
         exposicion_glosas=patient.exposicion_glosas,
         hallazgos_por_riesgo=hallazgos_por_riesgo,
