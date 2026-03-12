@@ -11,7 +11,7 @@ from app.models.patient import PatientCase, RiskLevel
 from app.services.document.pdf_extractor import extract_text_from_pdf, get_total_pages
 from app.services.document.anonymizer import anonymize_pages
 from app.services.ai.extractor import extract_clinical_variables
-from app.services.ai.audit_modules import run_all_modules, calculate_risk, Finding
+from app.services.ai.audit_modules import run_all_modules, calculate_risk, generate_audit_summary, Finding
 
 
 async def _update_status(session_id: str, status: DocumentStatus):
@@ -53,11 +53,12 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
             if not session:
                 return
 
-            # Calcular riesgo y hallazgos
+            # Ejecutar módulos de auditoría
             findings: list[Finding] = run_all_modules(clinical_data)
             risk_level = calculate_risk(findings)
+            summary = generate_audit_summary(findings, clinical_data)
 
-            # Crear registro del paciente
+            # Crear registro del paciente con campos de auditoría
             patient = PatientCase(
                 id=str(uuid.uuid4()),
                 label=label,
@@ -76,20 +77,29 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                 estudios_solicitados=clinical_data.get("estudios_solicitados", []),
                 procedimientos=clinical_data.get("procedimientos", []),
                 evoluciones=clinical_data.get("evoluciones", []),
+                # Campos de auditoría
+                riesgo_auditoria=summary["riesgo_global"],
+                total_hallazgos=summary["total_hallazgos"],
+                exposicion_glosas=summary["exposicion_glosas_cop"],
+                audit_status="completed",
             )
             db.add(patient)
             await db.flush()
 
-            # Guardar hallazgos
+            # Guardar hallazgos con todos los campos
             for f in findings:
                 db.add(AuditFinding(
                     id=str(uuid.uuid4()),
                     patient_id=patient.id,
                     modulo=f.modulo.value,
+                    categoria=f.categoria,
                     descripcion=f.descripcion,
                     riesgo=f.riesgo.value,
-                    pagina=f.pagina,
                     recomendacion=f.recomendacion,
+                    normativa_aplicable=f.normativa_aplicable,
+                    valor_glosa_estimado=f.valor_glosa_estimado,
+                    pagina=f.pagina,
+                    estado="activo",
                     resuelto=False,
                 ))
 

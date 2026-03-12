@@ -1,7 +1,7 @@
 import uuid
 import json
 from datetime import datetime, date
-from sqlalchemy import String, DateTime, Date, Integer, Text, Boolean, TypeDecorator, func
+from sqlalchemy import String, DateTime, Date, Integer, Text, Boolean, Float, TypeDecorator, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 import enum
@@ -53,6 +53,12 @@ class PatientCase(Base):
     estudios_solicitados: Mapped[str] = mapped_column(JSONColumn, default=list)
     procedimientos: Mapped[str] = mapped_column(JSONColumn, default=list)
     evoluciones: Mapped[str] = mapped_column(JSONColumn, default=list)
+    
+    # Campos de auditoría clínica
+    riesgo_auditoria: Mapped[str] = mapped_column(String(10), nullable=True)  # bajo, medio, alto
+    total_hallazgos: Mapped[int] = mapped_column(Integer, default=0)
+    exposicion_glosas: Mapped[float] = mapped_column(Float, default=0.0)  # En COP
+    audit_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, processing, completed
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

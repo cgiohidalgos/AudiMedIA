@@ -1,0 +1,276 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "fecha_actualizacion": "2026-03-11",
+    "fuente": "Ministerio de Salud Colombia - Tarifario SOAT + Guías Clínicas",
+    "descripcion": "Días esperados de hospitalización según código CIE-10 para auditoría concurrente"
+  },
+  "codigos": {
+    "A09": {
+      "nombre": "Diarrea y gastroenteritis de presunto origen infeccioso",
+      "dias_min": 2,
+      "dias_max": 4,
+      "categoria": "infectología",
+      "requiere_uci": false
+    },
+    "B20": {
+      "nombre": "Enfermedad por VIH con infecciones oportunistas",
+      "dias_min": 7,
+      "dias_max": 14,
+      "categoria": "infectología",
+      "requiere_uci": false
+    },
+    "E11": {
+      "nombre": "Diabetes mellitus no insulinodependiente",
+      "dias_min": 3,
+      "dias_max": 5,
+      "categoria": "endocrinología",
+      "requiere_uci": false
+    },
+    "E14.1": {
+      "nombre": "Diabetes mellitus con cetoacidosis",
+      "dias_min": 4,
+      "dias_max": 7,
+      "categoria": "endocrinología",
+      "requiere_uci": true
+    },
+    "G40": {
+      "nombre": "Epilepsia",
+      "dias_min": 2,
+      "dias_max": 4,
+      "categoria": "neurología",
+      "requiere_uci": false
+    },
+    "I10": {
+      "nombre": "Hipertensión esencial (primaria)",
+      "dias_min": 2,
+      "dias_max": 3,
+      "categoria": "cardiología",
+      "requiere_uci": false
+    },
+    "I20": {
+      "nombre": "Angina de pecho",
+      "dias_min": 3,
+      "dias_max": 5,
+      "categoria": "cardiología",
+      "requiere_uci": false
+    },
+    "I21": {
+      "nombre": "Infarto agudo del miocardio",
+      "dias_min": 5,
+      "dias_max": 7,
+      "categoria": "cardiología",
+      "requiere_uci": true
+    },
+    "I21.0": {
+      "nombre": "Infarto transmural agudo de la pared anterior del miocardio",
+      "dias_min": 5,
+      "dias_max": 8,
+      "categoria": "cardiología",
+      "requiere_uci": true
+    },
+    "I50": {
+      "nombre": "Insuficiencia cardíaca",
+      "dias_min": 4,
+      "dias_max": 7,
+      "categoria": "cardiología",
+      "requiere_uci": false
+    },
+    "I63": {
+      "nombre": "Infarto cerebral",
+      "dias_min": 7,
+      "dias_max": 14,
+      "categoria": "neurología",
+      "requiere_uci": true
+    },
+    "I64": {
+      "nombre": "Accidente vascular encefálico",
+      "dias_min": 5,
+      "dias_max": 10,
+      "categoria": "neurología",
+      "requiere_uci": false
+    },
+    "J18": {
+      "nombre": "Neumonía, organismo no especificado",
+      "dias_min": 4,
+      "dias_max": 7,
+      "categoria": "neumología",
+      "requiere_uci": false
+    },
+    "J18.0": {
+      "nombre": "Bronconeumonía, no especificada",
+      "dias_min": 5,
+      "dias_max": 8,
+      "categoria": "neumología",
+      "requiere_uci": false
+    },
+    "J18.9": {
+      "nombre": "Neumonía, no especificada",
+      "dias_min": 3,
+      "dias_max": 5,
+      "categoria": "neumología",
+      "requiere_uci": false
+    },
+    "J44": {
+      "nombre": "Otras enfermedades pulmonares obstructivas crónicas",
+      "dias_min": 5,
+      "dias_max": 8,
+      "categoria": "neumología",
+      "requiere_uci": false
+    },
+    "J44.0": {
+      "nombre": "EPOC con infección respiratoria aguda",
+      "dias_min": 6,
+      "dias_max": 10,
+      "categoria": "neumología",
+      "requiere_uci": false
+    },
+    "J96": {
+      "nombre": "Insuficiencia respiratoria",
+      "dias_min": 7,
+      "dias_max": 12,
+      "categoria": "neumología",
+      "requiere_uci": true
+    },
+    "K35": {
+      "nombre": "Apendicitis aguda",
+      "dias_min": 2,
+      "dias_max": 4,
+      "categoria": "cirugía general",
+      "requiere_uci": false
+    },
+    "K35.2": {
+      "nombre": "Apendicitis aguda con peritonitis localizada",
+      "dias_min": 3,
+      "dias_max": 5,
+      "categoria": "cirugía general",
+      "requiere_uci": false
+    },
+    "K35.3": {
+      "nombre": "Apendicitis aguda con peritonitis generalizada",
+      "dias_min": 5,
+      "dias_max": 8,
+      "categoria": "cirugía general",
+      "requiere_uci": true
+    },
+    "K40": {
+      "nombre": "Hernia inguinal",
+      "dias_min": 1,
+      "dias_max": 2,
+      "categoria": "cirugía general",
+      "requiere_uci": false
+    },
+    "K56": {
+      "nombre": "Íleo paralítico y obstrucción intestinal",
+      "dias_min": 4,
+      "dias_max": 7,
+      "categoria": "cirugía general",
+      "requiere_uci": false
+    },
+    "K80": {
+      "nombre": "Colelitiasis",
+      "dias_min": 2,
+      "dias_max": 4,
+      "categoria": "cirugía general",
+      "requiere_uci": false
+    },
+    "K80.0": {
+      "nombre": "Cálculo de la vesícula biliar con colecistitis aguda",
+      "dias_min": 3,
+      "dias_max": 5,
+      "categoria": "cirugía general",
+      "requiere_uci": false
+    },
+    "K81": {
+      "nombre": "Colecistitis",
+      "dias_min": 3,
+      "dias_max": 6,
+      "categoria": "cirugía general",
+      "requiere_uci": false
+    },
+    "N10": {
+      "nombre": "Nefritis tubulointersticial aguda",
+      "dias_min": 5,
+      "dias_max": 8,
+      "categoria": "nefrología",
+      "requiere_uci": false
+    },
+    "N17": {
+      "nombre": "Insuficiencia renal aguda",
+      "dias_min": 7,
+      "dias_max": 14,
+      "categoria": "nefrología",
+      "requiere_uci": true
+    },
+    "N18": {
+      "nombre": "Enfermedad renal crónica",
+      "dias_min": 5,
+      "dias_max": 10,
+      "categoria": "nefrología",
+      "requiere_uci": false
+    },
+    "N39": {
+      "nombre": "Trastornos del sistema urinario",
+      "dias_min": 2,
+      "dias_max": 4,
+      "categoria": "urología",
+      "requiere_uci": false
+    },
+    "N39.0": {
+      "nombre": "Infección de vías urinarias",
+      "dias_min": 3,
+      "dias_max": 5,
+      "categoria": "urología",
+      "requiere_uci": false
+    },
+    "O80": {
+      "nombre": "Parto único espontáneo",
+      "dias_min": 2,
+      "dias_max": 3,
+      "categoria": "obstetricia",
+      "requiere_uci": false
+    },
+    "O82": {
+      "nombre": "Parto único por cesárea",
+      "dias_min": 3,
+      "dias_max": 4,
+      "categoria": "obstetricia",
+      "requiere_uci": false
+    },
+    "S06": {
+      "nombre": "Traumatismo intracraneal",
+      "dias_min": 5,
+      "dias_max": 10,
+      "categoria": "neurocirugía",
+      "requiere_uci": true
+    },
+    "S72": {
+      "nombre": "Fractura del fémur",
+      "dias_min": 4,
+      "dias_max": 7,
+      "categoria": "ortopedia",
+      "requiere_uci": false
+    },
+    "S72.0": {
+      "nombre": "Fractura del cuello del fémur",
+      "dias_min": 5,
+      "dias_max": 8,
+      "categoria": "ortopedia",
+      "requiere_uci": false
+    },
+    "T14": {
+      "nombre": "Traumatismo múltiple",
+      "dias_min": 7,
+      "dias_max": 14,
+      "categoria": "trauma",
+      "requiere_uci": true
+    },
+    "T81": {
+      "nombre": "Complicaciones de procedimientos",
+      "dias_min": 3,
+      "dias_max": 7,
+      "categoria": "cirugía general",
+      "requiere_uci": false
+    }
+  }
+}
