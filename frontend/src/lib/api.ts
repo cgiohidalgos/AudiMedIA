@@ -132,6 +132,28 @@ export interface AuditFinding {
   pagina: number | null;
   resuelto: boolean;
   recomendacion: string | null;
+  categoria: string | null;
+  normativa_aplicable: string | null;
+  valor_glosa_estimado: number | null;
+  estado: string;
+  created_at: string;
+}
+
+export interface AuditSummary {
+  riesgo_global: 'alto' | 'medio' | 'bajo' | 'pending';
+  total_hallazgos: number;
+  exposicion_glosas: number;
+  hallazgos_por_riesgo: Record<string, number>;
+  hallazgos_por_modulo: Record<string, number>;
+  hallazgos: AuditFinding[];
+  recomendacion_general: string;
+  paciente: {
+    id: string;
+    label: string;
+    diagnostico_principal: string | null;
+    codigo_cie10: string | null;
+    dias_hospitalizacion: number | null;
+  };
 }
 
 export const patientsApi = {
@@ -141,11 +163,65 @@ export const patientsApi = {
 
   findings: (id: string) => request<AuditFinding[]>(`/patients/${id}/findings`),
 
+  audit: (id: string) => request<AuditSummary>(`/patients/${id}/audit`),
+
   resolveFinding: (patientId: string, findingId: string, resuelto: boolean) =>
     request<AuditFinding>(`/patients/${patientId}/findings/${findingId}`, {
       method: 'PATCH',
       body: JSON.stringify({ resuelto }),
     }),
+
+  exportPdf: (id: string) => {
+    const token = getToken();
+    return fetch(`${BASE_URL}/patients/${id}/export/pdf`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async res => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, body.detail ?? 'Error al exportar PDF');
+      }
+      return res.blob();
+    });
+  },
+
+  exportExcel: (id: string) => {
+    const token = getToken();
+    return fetch(`${BASE_URL}/patients/${id}/export/excel`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async res => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, body.detail ?? 'Error al exportar Excel');
+      }
+      return res.blob();
+    });
+  },
+
+  exportHtml: (id: string) => {
+    const token = getToken();
+    return fetch(`${BASE_URL}/patients/${id}/export/html`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async res => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, body.detail ?? 'Error al exportar HTML');
+      }
+      return res.text();
+    });
+  },
+
+  downloadOriginalPdf: (id: string) => {
+    const token = getToken();
+    return fetch(`${BASE_URL}/patients/${id}/download/original`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async res => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, body.detail ?? 'Error al descargar PDF original');
+      }
+      return res.blob();
+    });
+  },
 };
 
 // ─── Chat ────────────────────────────────────────────────────────────────────

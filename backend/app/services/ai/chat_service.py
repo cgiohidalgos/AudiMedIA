@@ -2,10 +2,12 @@
 Servicio de chat con historia clínica usando RAG básico.
 """
 import json
+import logging
 from openai import AsyncOpenAI
 from app.core.config import settings
 from app.schemas.audit import ChatResponse, ChatReference
 
+logger = logging.getLogger(__name__)
 client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 SYSTEM_PROMPT = """Eres un asistente de auditoría médica colombiana experto en:
@@ -13,42 +15,68 @@ SYSTEM_PROMPT = """Eres un asistente de auditoría médica colombiana experto en
 - Codificación: CIE10, CUPS
 - Glosas hospitalarias y auditoría concurrente
 
-El usuario es un auditor médico. Responde con base en la información de la historia clínica proporcionada.
-Cuando cites información, indica el número de página si está disponible.
-Sé conciso y técnico. Si no encuentras la información, dilo claramente."""
+Responde las preguntas del auditor médico con base ÚNICAMENTE en la información de la historia clínica.
+Cada pregunta es diferente - analiza cuidadosamente lo que te preguntan y responde específicamente.
+Sé técnico, preciso y varía tus respuestas según la pregunta.
+Si no encuentras la información, dilo claramente."""
 
 
 async def answer_question(patient, question: str, history: list) -> ChatResponse:
     """Genera respuesta al chat usando los datos clínicos del paciente."""
 
-    # Construir contexto con datos del paciente
-    context = f"""Historia clínica: {patient.label}
-Diagnóstico principal: {patient.diagnostico_principal or 'No documentado'}
-Código CIE10: {patient.codigo_cie10 or 'No asignado'}
-Días de hospitalización: {patient.dias_hospitalizacion or 'No registrado'}
-Medicamentos: {json.dumps(patient.medicamentos or [], ensure_ascii=False)}
-Evoluciones: {json.dumps(patient.evoluciones or [], ensure_ascii=False)}
-Estudios solicitados: {json.dumps(patient.estudios_solicitados or [], ensure_ascii=False)}
-Procedimientos: {json.dumps(patient.procedimientos or [], ensure_ascii=False)}"""
+    # Construir contexto con datos del paciente para el SYSTEM prompt
+    context = f"""DATOS DEL PACIENTE:
+- ID: {patient.label}
+- Diagnóstico: {patient.diagnostico_principal or 'No documentado'} ({patient.codigo_cie10 or 'Sin código'})
+- Edad: {patient.edad or 'N/A'} años, Sexo: {patient.sexo or 'N/A'}
+- Días hospitalización: {patient.dias_hospitalizacion or 'No registrado'}
+- Medicamentos: {len(patient.medicamentos or [])} registrados
+- Estudios: {len(patient.estudios_solicitados or [])} solicitados
+- Procedimientos: {len(patient.procedimientos or [])} realizados
 
-    # Construir historial de mensajes
+DATOS COMPLETOS:
+{json.dumps({
+    'medicamentos': patient.medicamentos or [],
+    'evoluciones': patient.evoluciones or [],
+    'estudios': patient.estudios_solicitados or [],
+    'procedimientos': patient.procedimientos or [],
+    'diagnosticos_secundarios': patient.diagnosticos_secundarios or [],
+    'antecedentes': patient.antecedentes or {}
+}, ensure_ascii=False, indent=2)}"""
+
+    # Construir mensajes: system con contexto + historial + pregunta actual
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Contexto de la historia clínica:\n{context}"},
+        {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{context}"},
     ]
 
-    for msg in history[-10:]:  # Últimos 10 mensajes
+    # Agregar historial de conversación (últimos 10 mensajes)
+    for msg in history[-10:]:
         messages.append({"role": msg.role, "content": msg.content})
 
+    # Agregar la pregunta actual
     messages.append({"role": "user", "content": question})
 
-    response = await client.chat.completions.create(
-        model=settings.LLM_MODEL,
-        messages=messages,
-        temperature=0.2,
-    )
-
-    answer = response.choices[0].message.content
+    logger.info(f"💬 Chat - Pregunta: '{question}'")
+    logger.info(f"📝 Chat - Historial previo: {len(history)} mensajes")
+    logger.info(f"📋 Chat - Total mensajes a OpenAI: {len(messages)} (system=1, historial={len(history)}, actual=1)")
+    logger.info(f"🔍 Chat - Contexto incluye: {len(patient.medicamentos or [])} meds, {len(patient.evoluciones or [])} evoluciones")
+    
+    try:
+        response = await client.chat.completions.create(
+            model=settings.LLM_MODEL,
+            messages=messages,
+            temperature=0.7,  # Mayor temperatura para respuestas más variadas
+            max_tokens=500,
+        )
+        
+        answer = response.choices[0].message.content
+        logger.info(f"✅ Respuesta generada ({len(answer)} chars): {answer[:150]}...")
+        logger.info(f"🎯 Tokens usados: prompt={response.usage.prompt_tokens}, completion={response.usage.completion_tokens}, total={response.usage.total_tokens}")
+        
+    except Exception as e:
+        logger.error(f"❌ ERROR en chat: {type(e).__name__}: {str(e)}")
+        logger.exception("Traceback completo:")
+        raise
 
     # Extraer referencias de página si las hay (simplificado)
     referencias = []

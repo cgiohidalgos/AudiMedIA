@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignorar variables extra como VITE_*
 
 
 settings = Settings()

@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,6 +6,13 @@ from app.core.config import settings
 from app.api.v1.router import api_router
 from app.db.session import engine, Base, AsyncSessionLocal
 from app.db.seed import seed_default_users
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Importar modelos para que SQLAlchemy los registre
 from app.models import user, patient, audit  # noqa: F401

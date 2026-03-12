@@ -9,6 +9,7 @@ import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
 import AppPage from "./pages/AppPage";
 import DashboardPage from "./pages/DashboardPage";
+import ReporteIndividualPage from "./pages/ReporteIndividualPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,11 @@ const App = () => (
             <Route path="/dashboard" element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/patients/:id/report" element={
+              <ProtectedRoute>
+                <ReporteIndividualPage />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />
