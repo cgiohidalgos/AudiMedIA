@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, upload, patients, chat, dashboard
+from app.api.v1.endpoints import auth, users, upload, patients, chat, dashboard, demo
 
 api_router = APIRouter()
 
@@ -9,3 +9,4 @@ api_router.include_router(upload.router)
 api_router.include_router(patients.router)
 api_router.include_router(chat.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(demo.router)

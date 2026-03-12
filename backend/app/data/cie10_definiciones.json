@@ -1,0 +1,240 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "fecha_actualizacion": "2026-03-11",
+    "fuente": "CIE-10 OMS - Definiciones clínicas",
+    "descripcion": "Criterios diagnósticos y síntomas esperados por código CIE-10"
+  },
+  "definiciones": {
+    "I21": {
+      "nombre": "Infarto agudo del miocardio",
+      "criterios_mayores": [
+        "dolor torácico opresivo",
+        "elevación enzimas cardíacas",
+        "cambios electrocardiográficos",
+        "troponina elevada"
+      ],
+      "sintomas_frecuentes": [
+        "disnea",
+        "diaforesis",
+        "náuseas",
+        "dolor irradiado a brazo izquierdo",
+        "ansiedad"
+      ],
+      "examenes_requeridos": [
+        "electrocardiograma",
+        "troponinas",
+        "CPK-MB",
+        "radiografía de tórax"
+      ],
+      "codigos_alternativos": ["I20", "I24.9", "I25.2"]
+    },
+    "J18.9": {
+      "nombre": "Neumonía no especificada",
+      "criterios_mayores": [
+        "infiltrado radiológico",
+        "fiebre",
+        "tos productiva",
+        "leucocitosis"
+      ],
+      "sintomas_frecuentes": [
+        "disnea",
+        "dolor pleurítico",
+        "expectoración purulenta",
+        "taquipnea",
+        "crepitantes pulmonares"
+      ],
+      "examenes_requeridos": [
+        "radiografía de tórax",
+        "hemograma",
+        "gases arteriales",
+        "hemocultivos"
+      ],
+      "codigos_alternativos": ["J18.0", "J18.1", "J15.9"]
+    },
+    "K35.2": {
+      "nombre": "Apendicitis aguda con peritonitis localizada",
+      "criterios_mayores": [
+        "dolor fosa ilíaca derecha",
+        "signo de Blumberg positivo",
+        "leucocitosis",
+        "fiebre"
+      ],
+      "sintomas_frecuentes": [
+        "náuseas",
+        "vómitos",
+        "anorexia",
+        "defensa abdominal",
+        "signo de McBurney"
+      ],
+      "examenes_requeridos": [
+        "hemograma",
+        "ecografía abdominal",
+        "PCR"
+      ],
+      "codigos_alternativos": ["K35.3", "K35.8", "K37"]
+    },
+    "E14.1": {
+      "nombre": "Diabetes mellitus con cetoacidosis",
+      "criterios_mayores": [
+        "hiperglicemia >250 mg/dL",
+        "cetonuria",
+        "acidosis metabólica pH <7.3",
+        "bicarbonato <15 mEq/L"
+      ],
+      "sintomas_frecuentes": [
+        "poliuria",
+        "polidipsia",
+        "deshidratación",
+        "respiración de Kussmaul",
+        "aliento cetónico",
+        "alteración del estado mental"
+      ],
+      "examenes_requeridos": [
+        "glicemia",
+        "gases arteriales",
+        "cetonas en sangre/orina",
+        "electrolitos",
+        "creatinina"
+      ],
+      "codigos_alternativos": ["E11.1", "E10.1"]
+    },
+    "I63": {
+      "nombre": "Infarto cerebral",
+      "criterios_mayores": [
+        "déficit neurológico focal agudo",
+        "imagen cerebral compatible",
+        "duración >24 horas"
+      ],
+      "sintomas_frecuentes": [
+        "hemiparesia",
+        "afasia",
+        "disartria",
+        "alteración de conciencia",
+        "desviación de la mirada"
+      ],
+      "examenes_requeridos": [
+        "TAC cerebral sin contraste",
+        "resonancia magnética cerebral",
+        "doppler carotídeo",
+        "electrocardiograma",
+        "perfil lipídico"
+      ],
+      "codigos_alternativos": ["I64", "I67.9", "G46.9"]
+    },
+    "N39.0": {
+      "nombre": "Infección de vías urinarias",
+      "criterios_mayores": [
+        "disuria",
+        "leucocituria",
+        "bacteriuria",
+        "urocultivo positivo >100,000 UFC"
+      ],
+      "sintomas_frecuentes": [
+        "polaquiuria",
+        "urgencia miccional",
+        "dolor suprapúbico",
+        "hematuria",
+        "orina turbia"
+      ],
+      "examenes_requeridos": [
+        "parcial de orina",
+        "urocultivo",
+        "ecografía renal (si complicada)"
+      ],
+      "codigos_alternativos": ["N30.0", "N10", "N12"]
+    },
+    "I50": {
+      "nombre": "Insuficiencia cardíaca",
+      "criterios_mayores": [
+        "disnea de esfuerzo",
+        "edema de miembros inferiores",
+        "estertores pulmonares",
+        "cardiomegalia"
+      ],
+      "sintomas_frecuentes": [
+        "ortopnea",
+        "disnea paroxística nocturna",
+        "tos nocturna",
+        "fatiga",
+        "ingurgitación yugular"
+      ],
+      "examenes_requeridos": [
+        "ecocardiograma",
+        "radiografía de tórax",
+        "BNP o NT-proBNP",
+        "electrocardiograma"
+      ],
+      "codigos_alternativos": ["I11.0", "I13.0", "I50.9"]
+    },
+    "J44.0": {
+      "nombre": "EPOC con infección respiratoria aguda",
+      "criterios_mayores": [
+        "disnea progresiva",
+        "aumento de expectoración",
+        "expectoración purulenta",
+        "obstrucción al flujo aéreo"
+      ],
+      "sintomas_frecuentes": [
+        "tos crónica",
+        "sibilancias",
+        "taquipnea",
+        "uso de músculos accesorios",
+        "cianosis"
+      ],
+      "examenes_requeridos": [
+        "radiografía de tórax",
+        "gases arteriales",
+        "espirometría",
+        "hemograma"
+      ],
+      "codigos_alternativos": ["J44.1", "J44.9", "J20.9"]
+    },
+    "S72.0": {
+      "nombre": "Fractura del cuello del fémur",
+      "criterios_mayores": [
+        "trauma de cadera",
+        "dolor inguinal intenso",
+        "impotencia funcional",
+        "rotación externa y acortamiento del miembro"
+      ],
+      "sintomas_frecuentes": [
+        "imposibilidad para caminar",
+        "deformidad de la extremidad",
+        "equimosis",
+        "edema"
+      ],
+      "examenes_requeridos": [
+        "radiografía de cadera AP y lateral",
+        "TAC de cadera (si radiografía no concluyente)",
+        "hemograma",
+        "tiempos de coagulación"
+      ],
+      "codigos_alternativos": ["S72.1", "S72.2", "S79.9"]
+    },
+    "K80.0": {
+      "nombre": "Cálculo de vesícula biliar con colecistitis aguda",
+      "criterios_mayores": [
+        "dolor en hipocondrio derecho",
+        "signo de Murphy positivo",
+        "fiebre",
+        "leucocitosis"
+      ],
+      "sintomas_frecuentes": [
+        "náuseas",
+        "vómitos",
+        "ictericia",
+        "dolor post-prandial",
+        "intolerancia a grasas"
+      ],
+      "examenes_requeridos": [
+        "ecografía hepatobiliar",
+        "hemograma",
+        "bilirrubinas",
+        "transaminasas",
+        "fosfatasa alcalina"
+      ],
+      "codigos_alternativos": ["K81.0", "K80.2", "K80.8"]
+    }
+  }
+}

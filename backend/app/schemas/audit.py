@@ -6,20 +6,32 @@ from app.models.patient import RiskLevel
 
 
 class AuditFindingRead(BaseModel):
+    """Schema para leer un hallazgo de auditoría."""
     id: str
+    patient_id: str
     modulo: str
-    descripcion: str
+    categoria: Optional[str] = None
     riesgo: str
-    pagina: Optional[int]
-    resuelto: bool
-    recomendacion: Optional[str]
+    descripcion: str
+    recomendacion: str
+    normativa_aplicable: Optional[str] = None
+    valor_glosa_estimado: Optional[float] = None
+    pagina: Optional[int] = None
+    estado: str = "activo"
+    resuelto: bool = False
+    fecha_resolucion: Optional[datetime] = None
+    notas_resolucion: Optional[str] = None
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
 class AuditFindingUpdate(BaseModel):
-    resuelto: bool
+    """Schema para actualizar un hallazgo."""
+    estado: Optional[str] = None  # activo, resuelto, descartado
+    notas_resolucion: Optional[str] = None
+    resuelto: Optional[bool] = None  # Mantener compatibilidad con código legacy
 
 
 class AuditSessionRead(BaseModel):

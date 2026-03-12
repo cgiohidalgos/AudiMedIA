@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, Integer, Text, Boolean, func, ForeignKey
+from sqlalchemy import String, DateTime, Integer, Float, Text, Boolean, func, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 from app.models.patient import JSONColumn
@@ -46,19 +46,34 @@ class AuditSession(Base):
 
 
 class AuditFinding(Base):
-    """Hallazgos individuales de la auditoría."""
+    """Hallazgos individuales de la auditoría clínica."""
     __tablename__ = "audit_findings"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     patient_id: Mapped[str] = mapped_column(String(36), ForeignKey("patient_cases.id"), nullable=False)
-    modulo: Mapped[str] = mapped_column(String(20), nullable=False)
+    
+    # Identificación del hallazgo
+    modulo: Mapped[str] = mapped_column(String(20), nullable=False)  # estancia, cie10, estudios, glosas
+    categoria: Mapped[str] = mapped_column(String(100), nullable=True)  # estancia_prolongada, codigo_incompleto, etc.
+    riesgo: Mapped[str] = mapped_column(String(10), nullable=False)  # bajo, medio, alto
+    
+    # Contenido
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
-    riesgo: Mapped[str] = mapped_column(String(10), nullable=False)
+    recomendacion: Mapped[str] = mapped_column(Text, nullable=False)
+    normativa_aplicable: Mapped[str] = mapped_column(String(255), nullable=True)
+    
+    # Impacto económico y ubicación
+    valor_glosa_estimado: Mapped[float] = mapped_column(Float, nullable=True)  # En COP
     pagina: Mapped[int] = mapped_column(Integer, nullable=True)
-    resuelto: Mapped[bool] = mapped_column(Boolean, default=False)
-    recomendacion: Mapped[str] = mapped_column(Text, nullable=True)
-
+    
+    # Estado de resolución
+    estado: Mapped[str] = mapped_column(String(20), default="activo")  # activo, resuelto, descartado
+    resuelto: Mapped[bool] = mapped_column(Boolean, default=False)  # Mantener compatibilidad
+    fecha_resolucion: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    notas_resolucion: Mapped[str] = mapped_column(Text, nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     patient = relationship("PatientCase", back_populates="findings")
 

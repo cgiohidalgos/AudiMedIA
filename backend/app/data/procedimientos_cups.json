@@ -1,0 +1,255 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "fecha_actualizacion": "2026-03-11",
+    "fuente": "CUPS Colombia - Ministerio de Salud",
+    "descripcion": "Procedimientos y estudios con indicaciones clínicas para auditoría"
+  },
+  "estudios_imagenologicos": {
+    "87.03": {
+      "nombre": "Tomografía computarizada de cabeza",
+      "categoria": "imagen diagnóstica",
+      "indicaciones_frecuentes": [
+        "trauma craneoencefálico",
+        "sospecha de ACV",
+        "cefalea súbita intensa",
+        "alteración del estado de conciencia",
+        "déficit neurológico focal"
+      ],
+      "requiere_justificacion": true,
+      "tiempo_resultado": "inmediato"
+    },
+    "87.41": {
+      "nombre": "Tomografía computarizada de tórax",
+      "categoria": "imagen diagnóstica",
+      "indicaciones_frecuentes": [
+        "sospecha de tromboembolismo pulmonar",
+        "trauma torácico",
+        "neumonía complicada",
+        "derrame pleural",
+        "masas mediastinales"
+      ],
+      "requiere_justificacion": true,
+      "tiempo_resultado": "24 horas"
+    },
+    "88.01": {
+      "nombre": "Radiografía de tórax",
+      "categoria": "imagen diagnóstica",
+      "indicaciones_frecuentes": [
+        "neumonía",
+        "insuficiencia cardíaca",
+        "derrame pleural",
+        "neumotórax",
+        "trauma torácico"
+      ],
+      "requiere_justificacion": false,
+      "tiempo_resultado": "inmediato"
+    },
+    "88.25": {
+      "nombre": "Radiografía de abdomen",
+      "categoria": "imagen diagnóstica",
+      "indicaciones_frecuentes": [
+        "obstrucción intestinal",
+        "perforación visceral",
+        "dolor abdominal agudo",
+        "cuerpo extraño"
+      ],
+      "requiere_justificacion": false,
+      "tiempo_resultado": "inmediato"
+    },
+    "88.71": {
+      "nombre": "Ecografía abdominal",
+      "categoria": "imagen diagnóstica",
+      "indicaciones_frecuentes": [
+        "dolor abdominal",
+        "ictericia",
+        "hepatomegalia",
+        "ascitis",
+        "colelitiasis"
+      ],
+      "requiere_justificacion": false,
+      "tiempo_resultado": "24-48 horas"
+    },
+    "88.76": {
+      "nombre": "Ecocardiograma transtorácico",
+      "categoria": "imagen diagnóstica",
+      "indicaciones_frecuentes": [
+        "insuficiencia cardíaca",
+        "valvulopatías",
+        "dolor torácico",
+        "soplos cardíacos",
+        "IAM"
+      ],
+      "requiere_justificacion": true,
+      "tiempo_resultado": "24-48 horas"
+    }
+  },
+  "laboratorio_clinico": {
+    "90.05": {
+      "nombre": "Hemograma completo",
+      "categoria": "laboratorio",
+      "indicaciones_frecuentes": [
+        "infección",
+        "anemia",
+        "fiebre",
+        "sangrado",
+        "preoperatorio"
+      ],
+      "requiere_justificacion": false,
+      "tiempo_resultado": "3-6 horas"
+    },
+    "90.04": {
+      "nombre": "Troponinas cardíacas",
+      "categoria": "laboratorio",
+      "indicaciones_frecuentes": [
+        "dolor torácico",
+        "sospecha de IAM",
+        "síndrome coronario agudo"
+      ],
+      "requiere_justificacion": false,
+      "tiempo_resultado": "1-2 horas"
+    },
+    "90.23": {
+      "nombre": "Gases arteriales",
+      "categoria": "laboratorio",
+      "indicaciones_frecuentes": [
+        "insuficiencia respiratoria",
+        "acidosis metabólica",
+        "monitoreo ventilatorio",
+        "alteración del pH"
+      ],
+      "requiere_justificacion": false,
+      "tiempo_resultado": "inmediato"
+    },
+    "90.55": {
+      "nombre": "Hemocultivos",
+      "categoria": "laboratorio",
+      "indicaciones_frecuentes": [
+        "fiebre de origen desconocido",
+        "sepsis",
+        "bacteriemia",
+        "endocarditis"
+      ],
+      "requiere_justificacion": true,
+      "tiempo_resultado": "48-72 horas"
+    },
+    "90.81": {
+      "nombre": "Urocultivo",
+      "categoria": "laboratorio",
+      "indicaciones_frecuentes": [
+        "infección urinaria",
+        "fiebre en contexto urinario",
+        "pielonefritis"
+      ],
+      "requiere_justificacion": false,
+      "tiempo_resultado": "48-72 horas"
+    },
+    "90.02": {
+      "nombre": "Creatinina sérica",
+      "categoria": "laboratorio",
+      "indicaciones_frecuentes": [
+        "insuficiencia renal",
+        "deshidratación",
+        "sepsis",
+        "medicamentos nefrotóxicos"
+      ],
+      "requiere_justificacion": false,
+      "tiempo_resultado": "3-6 horas"
+    }
+  },
+  "procedimientos_quirurgicos": {
+    "39.95": {
+      "nombre": "Cateterismo venoso central",
+      "categoria": "procedimiento",
+      "indicaciones_frecuentes": [
+        "shock",
+        "administración de vasopresores",
+        "monitoreo hemodinámico",
+        "acceso venoso difícil"
+      ],
+      "requiere_justificacion": true,
+      "requiere_consentimiento": true,
+      "tiempo_realizacion": "inmediato"
+    },
+    "45.13": {
+      "nombre": "Apendicectomía",
+      "categoria": "procedimiento quirúrgico",
+      "indicaciones_frecuentes": [
+        "apendicitis aguda",
+        "peritonitis apendicular"
+      ],
+      "requiere_justificacion": true,
+      "requiere_consentimiento": true,
+      "tiempo_realizacion": "urgente (<6 horas)"
+    },
+    "51.22": {
+      "nombre": "Colecistectomía laparoscópica",
+      "categoria": "procedimiento quirúrgico",
+      "indicaciones_frecuentes": [
+        "colecistitis aguda",
+        "colelitiasis sintomática"
+      ],
+      "requiere_justificacion": true,
+      "requiere_consentimiento": true,
+      "tiempo_realizacion": "electivo o urgente"
+    },
+    "96.04": {
+      "nombre": "Intubación endotraqueal",
+      "categoria": "procedimiento",
+      "indicaciones_frecuentes": [
+        "insuficiencia respiratoria aguda",
+        "paro cardiorrespiratorio",
+        "protección de vía aérea",
+        "Glasgow <8"
+      ],
+      "requiere_justificacion": true,
+      "requiere_consentimiento": false,
+      "tiempo_realizacion": "emergencia"
+    },
+    "96.71": {
+      "nombre": "Ventilación mecánica",
+      "categoria": "procedimiento",
+      "indicaciones_frecuentes": [
+        "insuficiencia respiratoria",
+        "SDRA",
+        "postoperatorio",
+        "coma"
+      ],
+      "requiere_justificacion": true,
+      "requiere_consentimiento": true,
+      "tiempo_realizacion": "inmediato"
+    }
+  },
+  "glosas_frecuentes": {
+    "evolucion_diaria": {
+      "descripcion": "Falta evolución médica diaria",
+      "normativa": "Resolución 1995/1999 - Obligatoria todos los días",
+      "riesgo_glosa": "alto",
+      "valor_promedio_glosa": 150000
+    },
+    "orden_medicamento": {
+      "descripcion": "Medicamento sin orden médica u orden ilegible",
+      "normativa": "Decreto 780/2016",
+      "riesgo_glosa": "alto",
+      "valor_promedio_glosa": 200000
+    },
+    "consentimiento_informado": {
+      "descripcion": "Procedimiento sin consentimiento informado",
+      "normativa": "Ley 1733/2014",
+      "riesgo_glosa": "crítico",
+      "valor_promedio_glosa": 500000
+    },
+    "resultado_pendiente": {
+      "descripcion": "Estudio solicitado sin resultado en historia",
+      "normativa": "Resolución 1995/1999",
+      "riesgo_glosa": "medio",
+      "valor_promedio_glosa": 100000
+    },
+    "justificacion_estancia": {
+      "descripcion": "Estancia prolongada sin justificación clínica",
+      "normativa": "Guías clínicas - Estancias hospitalarias",
+      "riesgo_glosa": "alto",
+      "valor_promedio_glosa": 350000
+    }
+  }
+}
