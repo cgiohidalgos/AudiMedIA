@@ -156,6 +156,21 @@ export interface AuditSummary {
   };
 }
 
+export interface PatientControlBoard {
+  id: string;
+  cama: string | null;
+  historia: string;
+  diagnostico: string;
+  dias_hospitalizacion: number;
+  dias_esperados: string;
+  estudios_pendientes: string[];
+  riesgo_glosa: 'alto' | 'medio' | 'bajo' | 'pending';
+  total_hallazgos: number;
+  exposicion_glosas: number;
+  audit_status: 'pending' | 'processing' | 'completed';
+  fecha_ultima_auditoria: string | null;
+}
+
 export const patientsApi = {
   list: () => request<PatientSummary[]>('/patients/'),
 
@@ -164,6 +179,14 @@ export const patientsApi = {
   findings: (id: string) => request<AuditFinding[]>(`/patients/${id}/findings`),
 
   audit: (id: string) => request<AuditSummary>(`/patients/${id}/audit`),
+
+  controlBoard: (filters?: { risk_level?: string; audit_status?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.risk_level) params.append('risk_level', filters.risk_level);
+    if (filters?.audit_status) params.append('audit_status', filters.audit_status);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return request<PatientControlBoard[]>(`/patients/control-board${query}`);
+  },
 
   resolveFinding: (patientId: string, findingId: string, resuelto: boolean) =>
     request<AuditFinding>(`/patients/${patientId}/findings/${findingId}`, {

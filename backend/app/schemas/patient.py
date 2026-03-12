@@ -78,8 +78,22 @@ class PatientAuditResponse(BaseModel):
     total_hallazgos: int
     exposicion_glosas: float
     hallazgos_criticos: List[Dict[str, Any]]
-    recomendacion_general: str
-    audit_status: str
+
+
+class PatientControlBoard(BaseModel):
+    """Schema para el cuadro de control inteligente."""
+    id: str
+    cama: Optional[str]
+    historia: str  # label anonimizado
+    diagnostico: str  # "código_cie10 - descripción"
+    dias_hospitalizacion: int
+    dias_esperados: str
+    estudios_pendientes: List[str]  # Lista de estudios sin reporte
+    riesgo_glosa: str  # ALTO / MEDIO / BAJO
+    total_hallazgos: int
+    exposicion_glosas: float
+    audit_status: str  # pending / processing / completed
+    fecha_ultima_auditoria: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

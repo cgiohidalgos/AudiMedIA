@@ -166,6 +166,14 @@ const AppPage = () => {
               </button>
             )}
             
+            {/* Botón Cuadro de Control */}
+            <button
+              onClick={() => navigate('/control-board')}
+              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
+            >
+              Cuadro de Control
+            </button>
+            
             {/* Botón para ir a ver resultados */}
             <button
               onClick={() => setView('results')}
@@ -251,14 +259,12 @@ const AppPage = () => {
               Dashboard Financiero
             </button>
           )}
-          {permissions.canViewDashboard && (
-            <button
-              onClick={() => setView('control')}
-              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
-            >
-              Cuadro de control
-            </button>
-          )}
+          <button
+            onClick={() => navigate('/control-board')}
+            className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
+          >
+            Cuadro de Control
+          </button>
           {permissions.canUpload && (
             <button
               onClick={() => setView('upload')}

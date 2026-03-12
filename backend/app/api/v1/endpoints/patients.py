@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.patient import PatientCase
 from app.models.audit import AuditFinding
-from app.schemas.patient import PatientCaseRead, PatientCaseSummary, AuditSummaryResponse
+from app.schemas.patient import PatientCaseRead, PatientCaseSummary, AuditSummaryResponse, PatientControlBoard
 from app.schemas.audit import AuditFindingRead, AuditFindingUpdate
 from app.api.v1.deps import get_current_user, require_role
 from app.models.user import AppRole
@@ -21,6 +21,83 @@ async def list_patients(
 ):
     result = await db.execute(select(PatientCase).order_by(PatientCase.created_at.desc()))
     return result.scalars().all()
+
+
+@router.get("/control-board", response_model=List[PatientControlBoard])
+async def get_control_board(
+    risk_level: str = None,
+    audit_status: str = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """
+    Obtiene el cuadro de control inteligente consolidado.
+    Muestra todos los pacientes con su estado de auditoría en una tabla interactiva.
+
+    Filtros opcionales:
+    - risk_level: alto, medio, bajo
+    - audit_status: pending, processing, completed
+    """
+    from app.models.audit import AuditSession
+
+    query = select(PatientCase).order_by(PatientCase.created_at.desc())
+
+    if risk_level:
+        query = query.where(PatientCase.riesgo_auditoria == risk_level)
+
+    if audit_status:
+        query = query.where(PatientCase.audit_status == audit_status)
+
+    result = await db.execute(query)
+    patients = result.scalars().all()
+
+    control_board = []
+
+    for patient in patients:
+        estudios_pendientes = []
+        if patient.estudios_solicitados:
+            for estudio in patient.estudios_solicitados:
+                if isinstance(estudio, dict):
+                    tiene_reporte = estudio.get('reporte') or estudio.get('tiene_reporte')
+                    if not tiene_reporte:
+                        nombre_estudio = estudio.get('nombre') or estudio.get('estudio')
+                        if nombre_estudio:
+                            estudios_pendientes.append(nombre_estudio)
+
+        session_result = await db.execute(
+            select(AuditSession)
+            .where(AuditSession.patient_id == patient.id)
+            .order_by(AuditSession.fecha_ultima_auditoria.desc())
+            .limit(1)
+        )
+        audit_session = session_result.scalar_one_or_none()
+        fecha_ultima_auditoria = audit_session.fecha_ultima_auditoria if audit_session else None
+
+        if patient.codigo_cie10 and patient.diagnostico_principal:
+            diagnostico = f"{patient.codigo_cie10} - {patient.diagnostico_principal}"
+        elif patient.codigo_cie10:
+            diagnostico = patient.codigo_cie10
+        elif patient.diagnostico_principal:
+            diagnostico = patient.diagnostico_principal
+        else:
+            diagnostico = "Sin diagnóstico"
+
+        control_board.append(PatientControlBoard(
+            id=patient.id,
+            cama=patient.cama,
+            historia=patient.label,
+            diagnostico=diagnostico,
+            dias_hospitalizacion=patient.dias_hospitalizacion or 0,
+            dias_esperados=patient.dias_esperados or "N/A",
+            estudios_pendientes=estudios_pendientes,
+            riesgo_glosa=patient.riesgo_auditoria or "pending",
+            total_hallazgos=patient.total_hallazgos,
+            exposicion_glosas=patient.exposicion_glosas,
+            audit_status=patient.audit_status,
+            fecha_ultima_auditoria=fecha_ultima_auditoria,
+        ))
+
+    return control_board
 
 
 @router.get("/{patient_id}", response_model=PatientCaseRead)
