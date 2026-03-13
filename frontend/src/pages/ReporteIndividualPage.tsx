@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { patientsApi, AuditSummary } from '@/lib/api';
+import { patientsApi, AuditSummary, AuditSessionStatus } from '@/lib/api';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { 
   FileDown, 
   FileText, 
@@ -18,32 +26,69 @@ import {
   Clock,
   Stethoscope,
   DollarSign,
-  Activity
+  Activity,
+  RotateCcw,
+  PlayCircle,
+  BookOpen,
 } from 'lucide-react';
 
 const ReporteIndividualPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [audit, setAudit] = useState<AuditSummary | null>(null);
+  const [session, setSession] = useState<AuditSessionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<'pdf' | 'excel' | 'html' | null>(null);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (id) {
-      fetchAuditData();
+      fetchReportData();
     }
   }, [id]);
 
-  const fetchAuditData = async () => {
+  const fetchReportData = async () => {
     try {
       setLoading(true);
-      const data = await patientsApi.audit(id!);
-      setAudit(data);
-    } catch (error: any) {
-      toast.error(error.message || 'Error al cargar auditoría');
-      console.error(error);
+      // Cargar datos de auditoría y sesión en paralelo
+      const [auditData, sessionData] = await Promise.allSettled([
+        patientsApi.audit(id!),
+        patientsApi.getSession(id!),
+      ]);
+
+      if (auditData.status === 'fulfilled') {
+        setAudit(auditData.value);
+      } else {
+        toast.error('Error al cargar auditoría');
+      }
+
+      if (sessionData.status === 'fulfilled') {
+        setSession(sessionData.value);
+        // Mostrar modal si la sesión tiene progreso previo
+        if (sessionData.value.tiene_progreso_previo) {
+          setShowResumeModal(true);
+        }
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAuditData = fetchReportData;
+
+  const handleResetSession = async () => {
+    if (!id) return;
+    try {
+      setResetting(true);
+      await patientsApi.resetSession(id);
+      toast.success('Auditoría reiniciada. Por favor re-sube el PDF para volver a procesar.');
+      setShowResumeModal(false);
+      navigate('/app');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al reiniciar la sesión');
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -185,6 +230,79 @@ const ReporteIndividualPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* Modal: Sesión de auditoría previa detectada */}
+      <Dialog open={showResumeModal} onOpenChange={setShowResumeModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-blue-600" />
+              Sesión de auditoría guardada
+            </DialogTitle>
+            <DialogDescription>
+              Se encontró una auditoría previa para este paciente.
+            </DialogDescription>
+          </DialogHeader>
+
+          {session && (
+            <div className="space-y-4 py-2">
+              {/* Barra de progreso */}
+              <div>
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>Páginas auditadas</span>
+                  <span className="font-medium">
+                    {session.ultima_pagina_auditada} / {session.total_paginas_conocidas}
+                    {' '}({session.porcentaje_completado}%)
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div
+                    className="bg-blue-600 h-2.5 rounded-full transition-all"
+                    style={{ width: `${session.porcentaje_completado}%` }}
+                  />
+                </div>
+              </div>
+
+              {session.fecha_ultima_auditoria && (
+                <p className="text-sm text-gray-500">
+                  Última actividad:{' '}
+                  <span className="font-medium text-gray-700">
+                    {new Date(session.fecha_ultima_auditoria).toLocaleString('es-CO')}
+                  </span>
+                </p>
+              )}
+
+              <p className="text-sm text-gray-600">
+                ¿Deseas continuar revisando los hallazgos existentes o reiniciar la auditoría desde cero?
+              </p>
+            </div>
+          )}
+
+          <DialogFooter className="flex gap-2 sm:flex-row flex-col">
+            <Button
+              variant="outline"
+              onClick={handleResetSession}
+              disabled={resetting}
+              className="flex-1"
+            >
+              {resetting ? (
+                <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+              ) : (
+                <RotateCcw className="h-4 w-4 mr-2" />
+              )}
+              Reiniciar auditoría
+            </Button>
+            <Button
+              onClick={() => setShowResumeModal(false)}
+              className="flex-1"
+            >
+              <PlayCircle className="h-4 w-4 mr-2" />
+              Continuar revisión
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 py-6">
@@ -242,6 +360,48 @@ const ReporteIndividualPage = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+
+        {/* Banner de progreso de sesión */}
+        {session && (
+          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+            <div className="flex items-center gap-3">
+              <BookOpen className="h-5 w-5 text-blue-600 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-900">
+                  Sesión de auditoría:{' '}
+                  <span className="font-bold">
+                    {session.ultima_pagina_auditada} de {session.total_paginas_conocidas} páginas
+                    ({session.porcentaje_completado}%)
+                  </span>
+                </p>
+                {session.fecha_ultima_auditoria && (
+                  <p className="text-xs text-blue-600">
+                    Última auditoría: {new Date(session.fecha_ultima_auditoria).toLocaleString('es-CO')}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {/* Barra de progreso compacta */}
+              <div className="w-32 bg-blue-200 rounded-full h-2 hidden sm:block">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all"
+                  style={{ width: `${session.porcentaje_completado}%` }}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowResumeModal(true)}
+                className="text-blue-700 border-blue-300 hover:bg-blue-100"
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                Reiniciar
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Encabezado del paciente */}
         <Card>
           <CardHeader>

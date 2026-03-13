@@ -71,6 +71,18 @@ class ChatResponse(BaseModel):
     patient_ids: List[str] = []
 
 
+class AuditSessionStatus(BaseModel):
+    """Estado enriquecido de la sesión de auditoría para el frontend."""
+    id: str
+    patient_id: Optional[str] = None
+    ultima_pagina_auditada: int
+    total_paginas_conocidas: int
+    porcentaje_completado: float
+    fecha_ultima_auditoria: Optional[datetime] = None
+    status: str
+    tiene_progreso_previo: bool
+
+
 class DashboardMetrics(BaseModel):
     historias_auditadas: int
     glosas_evitadas: int

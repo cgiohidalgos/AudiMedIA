@@ -7,7 +7,7 @@ from app.models.user import User
 from app.models.patient import PatientCase
 from app.models.audit import AuditFinding
 from app.schemas.patient import PatientCaseRead, PatientCaseSummary, AuditSummaryResponse, PatientControlBoard
-from app.schemas.audit import AuditFindingRead, AuditFindingUpdate
+from app.schemas.audit import AuditFindingRead, AuditFindingUpdate, AuditSessionStatus
 from app.api.v1.deps import get_current_user, require_role
 from app.models.user import AppRole
 
@@ -98,6 +98,91 @@ async def get_control_board(
         ))
 
     return control_board
+
+
+@router.get("/{patient_id}/session", response_model=AuditSessionStatus)
+async def get_audit_session_status(
+    patient_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Obtiene el estado de la sesión de auditoría incremental de un paciente."""
+    from app.models.audit import AuditSession
+
+    session_result = await db.execute(
+        select(AuditSession)
+        .where(AuditSession.patient_id == patient_id)
+        .order_by(AuditSession.fecha_ultima_auditoria.desc())
+        .limit(1)
+    )
+    session = session_result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="No se encontró sesión de auditoría para este paciente")
+
+    total = session.total_paginas_conocidas or 0
+    auditadas = session.ultima_pagina_auditada or 0
+    pct = round((auditadas / total * 100), 1) if total > 0 else 0.0
+
+    return AuditSessionStatus(
+        id=session.id,
+        patient_id=session.patient_id,
+        ultima_pagina_auditada=auditadas,
+        total_paginas_conocidas=total,
+        porcentaje_completado=pct,
+        fecha_ultima_auditoria=session.fecha_ultima_auditoria,
+        status=session.status,
+        tiene_progreso_previo=auditadas > 0,
+    )
+
+
+@router.post("/{patient_id}/session/reset", status_code=204)
+async def reset_audit_session(
+    patient_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(AppRole.admin, AppRole.auditor)),
+):
+    """
+    Reinicia la sesión de auditoría de un paciente.
+    Elimina todos los hallazgos existentes y restablece el contador de páginas a 0,
+    permitiendo que se procese de nuevo el PDF desde el inicio.
+    """
+    from app.models.audit import AuditSession, AuditFinding
+    from sqlalchemy import delete, update
+
+    # Verificar que el paciente existe
+    p_result = await db.execute(select(PatientCase).where(PatientCase.id == patient_id))
+    patient = p_result.scalar_one_or_none()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    # Eliminar todos los hallazgos del paciente
+    await db.execute(delete(AuditFinding).where(AuditFinding.patient_id == patient_id))
+
+    # Resetear la sesión de auditoría
+    await db.execute(
+        update(AuditSession)
+        .where(AuditSession.patient_id == patient_id)
+        .values(
+            ultima_pagina_auditada=0,
+            status="pending",
+            fecha_ultima_auditoria=None,
+        )
+    )
+
+    # Resetear contadores en PatientCase
+    await db.execute(
+        update(PatientCase)
+        .where(PatientCase.id == patient_id)
+        .values(
+            total_hallazgos=0,
+            exposicion_glosas=0.0,
+            riesgo_auditoria=None,
+            audit_status="pending",
+        )
+    )
+
+    await db.commit()
 
 
 @router.get("/{patient_id}", response_model=PatientCaseRead)
