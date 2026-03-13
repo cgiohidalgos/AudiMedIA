@@ -20,7 +20,7 @@ INSTRUCCIONES:
 2. Cuando cites información específica del documento, indica la fuente en formato: (página X) o (págs. X, Y).
 3. Sé técnico, preciso y varía tus respuestas según la pregunta.
 4. Si no encuentras la información, dilo claramente.
-5. Para análisis clínicos, finaliza con: "⚠️ Esta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisión clínica profesional.""""
+5. Para análisis clínicos, finaliza con: '⚠️ Esta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisión clínica profesional.'"""
 
 
 async def answer_question(patient, question: str, history: list) -> ChatResponse:
