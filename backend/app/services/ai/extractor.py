@@ -30,6 +30,7 @@ Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
   "fecha_ingreso": null,
   "dias_hospitalizacion": null,
   "dias_esperados": null,
+  "fecha_egreso": null,
   "medicamentos": [
     {{"nombre": "", "dosis": "", "frecuencia": ""}}
   ],
@@ -54,7 +55,8 @@ INSTRUCCIONES ESPECÍFICAS:
 - diagnosticos_secundarios: DEBE incluir código CIE-10 y descripción para cada uno
 - estudios_solicitados: Incluir paraclínicos e imágenes con su justificación clínica
 - procedimientos: Extraer intervenciones quirúrgicas o procedimientos con fecha y justificación
-- dias_hospitalizacion: Calcular diferencia entre fecha_ingreso y fecha actual/egreso
+- dias_hospitalizacion: Calcular diferencia entre fecha_ingreso y fecha actual/egreso (use la fecha de egreso si está disponible)
+- fecha_egreso: Buscar en el texto la última fecha dentro del bloque "RESUMEN DEL PLAN TERAPEUTICO" y úsala como fecha de egreso; si no encuentras ninguno, dejar null.
 - dias_esperados: Buscar en el texto si mencionan tiempo esperado de hospitalización
 - antecedentes.farmacologicos: Medicación previa o alergias conocidas
 - Usa null para valores no encontrados, [] para arrays vacíos

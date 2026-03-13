@@ -158,6 +158,7 @@ export interface AuditSummary {
     codigo_cie10: string | null;
     diagnosticos_secundarios?: any[];
     fecha_ingreso?: string; // ISO date string
+    fecha_egreso?: string;
     dias_hospitalizacion?: number;
     dias_esperados?: string | null;
     medicamentos?: any[];

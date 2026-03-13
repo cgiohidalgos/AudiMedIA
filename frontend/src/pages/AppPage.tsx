@@ -25,6 +25,7 @@ interface PatientForUI {
   codigoCIE10: string;
   diagnosticosSecundarios?: any[];
   fechaIngreso?: string;
+  fechaEgreso?: string;
   diasHospitalizacion: number;
   diasEsperados: string;
   medicamentos?: any[];
@@ -114,6 +115,7 @@ const AppPage = () => {
       codigoCIE10: audit.paciente.codigo_cie10 || 'N/A',
       diagnosticosSecundarios: audit.paciente.diagnosticos_secundarios || [],
       fechaIngreso: audit.paciente.fecha_ingreso || undefined,
+      fechaEgreso: audit.paciente.fecha_egreso || undefined,
       diasHospitalizacion: audit.paciente.dias_hospitalizacion || 0,
       diasEsperados: audit.paciente.dias_esperados || 'N/A',
       medicamentos: audit.paciente.medicamentos || [],

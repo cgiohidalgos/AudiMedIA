@@ -18,6 +18,7 @@ class PatientCaseRead(BaseModel):
     codigo_cie10: Optional[str]
     diagnosticos_secundarios: List[Any] = []
     fecha_ingreso: Optional[date]
+    fecha_egreso: Optional[date]
     dias_hospitalizacion: Optional[int]
     dias_esperados: Optional[str]
     riesgo: str

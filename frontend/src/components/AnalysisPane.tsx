@@ -206,6 +206,10 @@ const AnalysisPane = ({ patient, onOpenChat, onTraceToSource }: AnalysisPaneProp
                   <td className="p-2 align-top">{formatValue(patient.procedimientos)}</td>
                 </tr>
                 <tr className="hover:bg-secondary/10 transition-colors">
+                  <td className="p-2 align-top bg-secondary/10">Fecha de egreso/última</td>
+                  <td className="p-2 align-top">{formatValue(patient.fechaEgreso)}</td>
+                </tr>
+                <tr className="hover:bg-secondary/10 transition-colors">
                   <td className="p-2 align-top bg-secondary/10">Días de estancia</td>
                   <td className="p-2 align-top">
                     {formatValue(patient.fechaIngreso)} → {formatValue(patient.diasHospitalizacion)} días

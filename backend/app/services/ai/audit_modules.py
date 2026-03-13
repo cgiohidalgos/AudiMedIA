@@ -18,6 +18,18 @@ import os
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Set
 from datetime import datetime, date
+
+
+def _parse_date(date_str: str | None) -> date | None:
+    if not date_str:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(str(date_str), fmt).date()
+        except ValueError:
+            continue
+    return None
+
 from pathlib import Path
 
 from app.models.audit import AuditModule
@@ -138,7 +150,14 @@ def analyze_estancia(patient_data: dict) -> List[Finding]:
     estancia_db = load_estancia_data()
     codigos = estancia_db.get("codigos", {})
     
+    # calcular dias reales usando fecha_ingreso y fecha_egreso si está disponible
+    fecha_ing = _parse_date(patient_data.get("fecha_ingreso"))
+    fecha_eg = _parse_date(patient_data.get("fecha_egreso"))
     dias_real = patient_data.get("dias_hospitalizacion")
+    if not dias_real and fecha_ing:
+        end = fecha_eg or date.today()
+        dias_real = (end - fecha_ing).days
+
     codigo_completo = patient_data.get("codigo_cie10", "")
     diagnostico = patient_data.get("diagnostico_principal", "Sin diagnóstico")
     en_uci = patient_data.get("en_uci", False)
