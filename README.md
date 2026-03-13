@@ -134,6 +134,7 @@ Al ejecutar `docker compose up` se crean automáticamente los siguientes usuario
 
 | Rol | Email | Password |
 |-----|-------|----------|
+| `superadmin` | superadmin@audiomedia.co | Superadmin1234 |
 | `admin` | admin@audiomedia.co | Admin1234 |
 | `auditor` | auditor@audiomedia.co | Auditor1234 |
 | `coordinador` | coordinador@audiomedia.co | Coordinador1234 |
