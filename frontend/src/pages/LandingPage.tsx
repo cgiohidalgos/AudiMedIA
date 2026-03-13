@@ -15,7 +15,7 @@ const LandingPage = () => {
       <nav className="border-b border-border bg-card sticky top-0 z-50 backdrop-blur-sm bg-card/95">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Shield className="h-6 w-6 text-primary" />
+            <img src="/logo.png" alt="AudiMedIA logo" className="h-8 w-8 object-contain" />
             <h1 className="font-display text-xl font-bold text-foreground">AudiMedIA</h1>
           </div>
           <button
@@ -556,7 +556,7 @@ const LandingPage = () => {
           <div className="border-t border-border pt-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <p className="font-body text-xs text-muted-foreground text-center md:text-left">
-                © 2026 AudiMedIA. Todos los derechos reservados.
+                © 2026 NeoMedic S.A.S. Todos los derechos reservados.
               </p>
               <div className="flex gap-6">
                 <button
