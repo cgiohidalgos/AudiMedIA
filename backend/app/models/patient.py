@@ -44,6 +44,7 @@ class PatientCase(Base):
     diagnosticos_secundarios: Mapped[str] = mapped_column(JSONColumn, default=list)
 
     fecha_ingreso: Mapped[date] = mapped_column(Date, nullable=True)
+    fecha_egreso: Mapped[date] = mapped_column(Date, nullable=True)
     dias_hospitalizacion: Mapped[int] = mapped_column(Integer, nullable=True)
     dias_esperados: Mapped[str] = mapped_column(String(50), nullable=True)
 

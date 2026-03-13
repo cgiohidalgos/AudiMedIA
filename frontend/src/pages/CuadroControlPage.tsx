@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { patientsApi, PatientControlBoard } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import AppNavbar from '@/components/AppNavbar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -185,30 +186,24 @@ export default function CuadroControlPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Cuadro de Control Inteligente</h1>
-          <p className="text-gray-600 mt-1">
-            Vista consolidada de pacientes hospitalizados en auditoría concurrente
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportToExcel}>
-            <Download className="h-4 w-4 mr-2" />
-            Excel
-          </Button>
-          <Button variant="outline" onClick={exportToPdf}>
-            <Download className="h-4 w-4 mr-2" />
-            PDF
-          </Button>
-          <Button onClick={loadControlBoard}>
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Actualizar
-          </Button>
-        </div>
-      </div>
+    <div className="min-h-screen bg-background">
+      <AppNavbar
+        title="Cuadro de Control"
+        extraActions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={exportToExcel}>
+              <Download className="h-3.5 w-3.5 mr-1" />Excel
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={exportToPdf}>
+              <Download className="h-3.5 w-3.5 mr-1" />PDF
+            </Button>
+            <Button size="sm" className="h-7 text-xs" onClick={loadControlBoard}>
+              <RotateCcw className="h-3.5 w-3.5 mr-1" />Actualizar
+            </Button>
+          </div>
+        }
+      />
+      <div className="container mx-auto p-6 space-y-6">
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -398,5 +393,6 @@ export default function CuadroControlPage() {
         </CardContent>
       </Card>
     </div>
+  </div>
   );
 }

@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/components/RoleGuard';
-import { useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import UploadScreen from '@/components/UploadScreen';
 import PatientSidebar from '@/components/PatientSidebar';
 import AnalysisPane from '@/components/AnalysisPane';
 import ChatPanel from '@/components/ChatPanel';
 import ControlTable from '@/components/ControlTable';
-import { mockPatients } from '@/data/mockPatients';
+import AppNavbar from '@/components/AppNavbar';
 import { patientsApi, type AuditSummary } from '@/lib/api';
-import { LogOut, User, Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 type View = 'upload' | 'results' | 'control';
@@ -40,31 +40,40 @@ interface PatientForUI {
 }
 
 const AppPage = () => {
-  const { user, role, signOut } = useAuth();
+  const { role } = useAuth();
   const permissions = usePermissions();
-  const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
-  const [view, setView] = useState<View>(permissions.canUpload ? 'upload' : 'results');
+
+  // Si venimos de otra página con state.view, usarlo como vista inicial
+  const initialView = (location.state as any)?.view ?? (permissions.canUpload ? 'upload' : 'results');
+  const [view, setView] = useState<View>(initialView);
   const [patients, setPatients] = useState<PatientForUI[]>([]);
   const [isLoadingPatients, setIsLoadingPatients] = useState(false);
+  const [pollingForUpload, setPollingForUpload] = useState(false);
+  const [uploadError, setUploadError] = useState(false);
+  const [pollCounter, setPollCounter] = useState(0);
+  const [toastMinimized, setToastMinimized] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [chatOpen, setChatOpen] = useState(false);
 
   // Fetch patients from API
   useEffect(() => {
+    if (view !== 'results' && view !== 'control') return;
+
     const fetchPatients = async () => {
       try {
         setIsLoadingPatients(true);
         const summaries = await patientsApi.list();
-        
-        // Si no hay pacientes reales, usar mock data para demo
+
         if (summaries.length === 0) {
-          setPatients(mockPatients as any);
-          setSelectedPatientId(mockPatients[0].id);
+          setPatients([]);
           return;
         }
-        
-        // Fetch audit details for each patient
+
+        // Pacientes encontrados — detener polling
+        setPollingForUpload(false);
+
         const patientsWithDetails = await Promise.all(
           summaries.map(async (summary) => {
             try {
@@ -76,32 +85,40 @@ const AppPage = () => {
             }
           })
         );
-        
+
         setPatients(patientsWithDetails);
         if (patientsWithDetails.length > 0) {
           setSelectedPatientId(patientsWithDetails[0].id);
         }
       } catch (error) {
         console.error('Error fetching patients:', error);
-        toast({
-          title: 'Error al cargar pacientes',
-          description: 'Usando datos de demostración',
-          variant: 'destructive',
-        });
-        // Fallback to mock data
-        setPatients(mockPatients as any);
-        setSelectedPatientId(mockPatients[0].id);
+        if (!pollingForUpload) {
+          toast({
+            title: 'Error al cargar pacientes',
+            description: 'No se pudo conectar con el servidor',
+            variant: 'destructive',
+          });
+        }
+        setPatients([]);
       } finally {
         setIsLoadingPatients(false);
       }
     };
 
-    if (view === 'results' || view === 'control') {
-      fetchPatients();
-    }
-  }, [view, toast]);
+    fetchPatients();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, pollCounter]);
 
-  const selectedPatient = patients.find(p => p.id === selectedPatientId) || patients[0];
+  // Polling loop: cuando viene de upload y no hay pacientes aún, reintenta cada 5s
+  useEffect(() => {
+    if (!pollingForUpload || patients.length > 0 || view !== 'results') return;
+
+    const timer = setTimeout(() => {
+      setPollCounter(c => c + 1);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [pollingForUpload, patients.length, view, isLoadingPatients]);
 
   // Helper: Map AuditSummary to PatientForUI
   function mapAuditToPatient(audit: AuditSummary): PatientForUI {
@@ -159,82 +176,118 @@ const AppPage = () => {
     };
   }
 
-  const roleLabel =
-    role === 'admin' ? 'Administrador' :
-    role === 'auditor' ? 'Auditor' :
-    role === 'coordinador' ? 'Coordinador' :
-    role === 'equipo_medico' ? 'Equipo Médico' : 'Usuario';
+  const selectedPatient = patients.find(p => p.id === selectedPatientId) || patients[0];
 
   if (view === 'upload' && permissions.canUpload) {
     return (
-      <div className="min-h-screen bg-background">
-        {/* User bar */}
-        <div className="border-b border-border bg-card px-4 h-10 flex items-center justify-between">
-          <span className="font-display text-xs font-semibold text-foreground">Audi Med IA</span>
-          <div className="flex items-center gap-3">
-            <span className="font-body text-xs text-muted-foreground flex items-center gap-1">
-              <User className="h-3 w-3" />
-              {user?.email} · {roleLabel}
-            </span>
-            
-            {/* Botón Dashboard - visible para admin y coordinador */}
-            {permissions.canViewDashboard && (
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
-              >
-                Dashboard Financiero
-              </button>
-            )}
-            
-            {/* Botón Cuadro de Control */}
-            <button
-              onClick={() => navigate('/control-board')}
-              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
-            >
-              Cuadro de Control
-            </button>
-            
-            {/* Botón para ir a ver resultados */}
-            <button
-              onClick={() => setView('results')}
-              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
-            >
-              Ver resultados
-            </button>
-            
-            <button onClick={signOut} className="text-muted-foreground hover:text-foreground" title="Cerrar sesión">
-              <LogOut className="h-3.5 w-3.5" />
-            </button>
-          </div>
+      <div className="min-h-screen flex flex-col bg-background">
+        <AppNavbar currentView="upload" onViewChange={setView} />
+        <div className="flex-1">
+          <UploadScreen
+            onStartAnalysis={(hadErrors) => {
+              setPollingForUpload(!hadErrors);
+              setUploadError(hadErrors);
+              setView('results');
+            }}
+          />
         </div>
-        <UploadScreen onStartAnalysis={() => setView('results')} />
       </div>
     );
   }
 
   if (view === 'control') {
-    if (isLoadingPatients) {
-      return (
-        <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      );
-    }
     return (
-      <ControlTable
-        patients={patients}
-        onSelectPatient={(id) => {
-          setSelectedPatientId(id);
-          setView('results');
-        }}
-        onBack={() => setView('results')}
-      />
+      <div className="min-h-screen flex flex-col bg-background">
+        <AppNavbar currentView="control" onViewChange={setView} />
+        <ControlTable
+          patients={patients}
+          onSelectPatient={(id) => {
+            setSelectedPatientId(id);
+            setView('results');
+          }}
+          onBack={() => setView('results')}
+        />
+      </div>
     );
   }
 
-  // Loading state
-  if (isLoadingPatients) {
+  // Floating processing toast (Drive-style)
+  const ProcessingToast = () => {
+    const isError = uploadError && !pollingForUpload;
+    return (
+      <div className="fixed bottom-4 right-4 z-50 w-72 bg-card border border-border shadow-lg rounded-lg overflow-hidden">
+        {toastMinimized ? (
+          <button
+            onClick={() => setToastMinimized(false)}
+            className="flex items-center gap-2 px-3 py-2 text-xs w-full hover:bg-secondary transition-colors"
+          >
+            {isError
+              ? <span className="h-3 w-3 rounded-full bg-destructive shrink-0" />
+              : <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />}
+            <span className="text-foreground flex-1 text-left">
+              {isError ? 'Error al procesar el archivo' : 'Procesando historia clínica…'}
+            </span>
+          </button>
+        ) : (
+          <>
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+              <span className="text-xs font-medium text-foreground">
+                {isError ? 'Error al procesar' : 'Procesando historia clínica'}
+              </span>
+              <button
+                onClick={() => { setUploadError(false); setPollingForUpload(false); setToastMinimized(false); }}
+                className="text-muted-foreground hover:text-foreground p-0.5 rounded text-lg leading-none"
+                title="Cerrar"
+              >
+                ×
+              </button>
+            </div>
+            {isError ? (
+              <div className="px-3 py-3 flex items-start gap-2.5">
+                <div className="mt-0.5 shrink-0 h-7 w-7 rounded bg-destructive/10 flex items-center justify-center">
+                  <FileText className="h-3.5 w-3.5 text-destructive" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs text-destructive font-medium">No se pudo procesar el archivo</span>
+                  <span className="text-xs text-muted-foreground/70">La IA encontró un error durante el análisis</span>
+                  {permissions.canUpload && (
+                    <button
+                      onClick={() => { setUploadError(false); setPollingForUpload(false); setView('upload'); }}
+                      className="mt-1 text-xs text-primary hover:underline text-left"
+                    >
+                      Reintentar con otro archivo
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="px-3 py-3 flex items-start gap-2.5">
+                <div className="mt-0.5 shrink-0 h-7 w-7 rounded bg-primary/10 flex items-center justify-center">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                    <span className="text-xs text-foreground">Analizando con IA…</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground/70">Esto puede tardar 1–2 minutos</span>
+                  <button
+                    onClick={() => setToastMinimized(true)}
+                    className="mt-1 text-xs text-muted-foreground hover:text-foreground text-left flex items-center gap-1"
+                  >
+                    <ChevronDown className="h-3 w-3" /> Minimizar
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // Loading state (solo en carga inicial, no durante polling)
+  if (isLoadingPatients && !pollingForUpload) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -245,60 +298,37 @@ const AppPage = () => {
   // Empty state
   if (patients.length === 0) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-background">
-        <p className="text-muted-foreground mb-4">No hay pacientes cargados aún</p>
-        {permissions.canUpload && (
-          <button
-            onClick={() => setView('upload')}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
-          >
-            Cargar primera historia clínica
-          </button>
-        )}
-      </div>
+      <>
+        <div className="h-screen flex flex-col bg-background">
+          <AppNavbar currentView="results" onViewChange={setView} />
+          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+            <p className="text-muted-foreground">No hay historias clínicas cargadas aún</p>
+            {permissions.canUpload && (
+              <button
+                onClick={() => setView('upload')}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+              >
+                Cargar primera historia clínica
+              </button>
+            )}
+          </div>
+        </div>
+        {(pollingForUpload || uploadError) && <ProcessingToast />}
+      </>
     );
   }
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <header className="h-12 border-b border-border bg-card flex items-center px-4 justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <h1 className="font-display text-sm font-bold text-foreground">Audi Med IA</h1>
-          <span className="text-xs font-body text-muted-foreground">·</span>
-          <span className="text-xs font-body text-muted-foreground">{patients.length} historias procesadas</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="font-body text-xs text-muted-foreground flex items-center gap-1">
-            <User className="h-3 w-3" />
-            {roleLabel}
+      <AppNavbar
+        currentView="results"
+        onViewChange={setView}
+        extraActions={
+          <span className="font-body text-xs text-muted-foreground">
+            {patients.length} {patients.length === 1 ? 'historia' : 'historias'}
           </span>
-          {permissions.canViewDashboard && (
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
-            >
-              Dashboard Financiero
-            </button>
-          )}
-          <button
-            onClick={() => navigate('/control-board')}
-            className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
-          >
-            Cuadro de Control
-          </button>
-          {permissions.canUpload && (
-            <button
-              onClick={() => setView('upload')}
-              className="font-body text-xs border border-border rounded px-3 py-1.5 hover:bg-secondary transition-colors text-foreground"
-            >
-              Nueva carga
-            </button>
-          )}
-          <button onClick={signOut} className="text-muted-foreground hover:text-foreground" title="Cerrar sesión">
-            <LogOut className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </header>
+        }
+      />
 
       <div className="flex flex-1 overflow-hidden">
         <PatientSidebar
@@ -325,6 +355,7 @@ const AppPage = () => {
           />
         )}
       </div>
+      {(pollingForUpload || uploadError) && <ProcessingToast />}
     </div>
   );
 };

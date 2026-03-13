@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { patientsApi, AuditSummary, AuditSessionStatus, ResetResponse } from '@/lib/api';
 import { toast } from 'sonner';
+import AppNavbar from '@/components/AppNavbar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -356,60 +357,37 @@ const ReporteIndividualPage = () => {
       )}
 
       {/* Header */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" onClick={() => navigate('/app')}>
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">📋 Reporte de Auditoría</h1>
-                <p className="text-gray-600 mt-1">Sistema AudiMedIA - Auditoría Concurrente con IA</p>
-              </div>
-            </div>
-            
-            {/* Botones de exportación */}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleExportHtml}
-                disabled={exporting !== null}
-              >
-                {exporting === 'html' ? (
-                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                ) : (
-                  <Code className="mr-2 h-4 w-4" />
-                )}
-                HTML
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleExportExcel}
-                disabled={exporting !== null}
-              >
-                {exporting === 'excel' ? (
-                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                ) : (
-                  <Sheet className="mr-2 h-4 w-4" />
-                )}
-                Excel
-              </Button>
-              <Button
-                onClick={handleExportPdf}
-                disabled={exporting !== null}
-              >
-                {exporting === 'pdf' ? (
-                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                ) : (
-                  <FileDown className="mr-2 h-4 w-4" />
-                )}
-                PDF
-              </Button>
-            </div>
+      <AppNavbar
+        title="Reporte de Auditoría"
+        extraActions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportHtml} disabled={exporting !== null}>
+              {exporting === 'html' ? (
+                <div className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full mr-1" />
+              ) : (
+                <Code className="mr-1 h-3.5 w-3.5" />
+              )}
+              HTML
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={exporting !== null}>
+              {exporting === 'excel' ? (
+                <div className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full mr-1" />
+              ) : (
+                <Sheet className="mr-1 h-3.5 w-3.5" />
+              )}
+              Excel
+            </Button>
+            <Button size="sm" onClick={handleExportPdf} disabled={exporting !== null}>
+              {exporting === 'pdf' ? (
+                <div className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full mr-1" />
+              ) : (
+                <FileDown className="mr-1 h-3.5 w-3.5" />
+              )}
+              PDF
+            </Button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
 

@@ -80,32 +80,40 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
             return "\n\n".join(f"[Página {p.page_number}]\n{p.text}" for p in p_list)
 
         # 3. == INCREMENTAL: determinar páginas nuevas ==
+        start_page = 0
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(AuditSession).where(AuditSession.id == session_id)
             )
-            session = result.scalar_one_or_none()
-            if not session:
+            session_row = result.scalar_one_or_none()
+            if not session_row:
                 logger.error(f"❌ Sesión {session_id} no encontrada")
                 return
 
             # si hay paciente vinculado y ya procesó todas las páginas
-            if session.patient_id and session.ultima_pagina_auditada >= total_pages:
-                session.status = DocumentStatus.listo.value
-                session.total_paginas_conocidas = total_pages
+            if session_row.patient_id and (session_row.ultima_pagina_auditada or 0) >= total_pages:
+                session_row.status = DocumentStatus.listo.value
+                session_row.total_paginas_conocidas = total_pages
                 await db.commit()
                 logger.info(f"📄 Sesión {session_id} no requiere procesamiento adicional")
                 return
 
+            # leer el valor mientras la sesión está abierta
+            start_page = session_row.ultima_pagina_auditada or 0
+
         # decidir rango a procesar
-        start_page = session.ultima_pagina_auditada or 0
         pages_to_analyze = extract_text_from_pdf(pdf_path, start_page)
         if not pages_to_analyze:
-            # nada nuevo
+            # nada nuevo — actualizar estado con una sesión fresca
             async with AsyncSessionLocal() as db:
-                session.status = DocumentStatus.listo.value
-                session.total_paginas_conocidas = total_pages
-                await db.commit()
+                result = await db.execute(
+                    select(AuditSession).where(AuditSession.id == session_id)
+                )
+                session_row2 = result.scalar_one_or_none()
+                if session_row2:
+                    session_row2.status = DocumentStatus.listo.value
+                    session_row2.total_paginas_conocidas = total_pages
+                    await db.commit()
             return
 
         anon_to_analyze = anonymize_pages(pages_to_analyze)

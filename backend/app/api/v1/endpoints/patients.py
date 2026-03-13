@@ -1,4 +1,5 @@
 import os
+import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from app.schemas.audit import AuditFindingRead, AuditFindingUpdate, AuditSession
 from app.api.v1.deps import get_current_user, require_role
 from app.models.user import AppRole
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/patients", tags=["patients"])
 
 
