@@ -19,10 +19,19 @@ interface PatientForUI {
   id: string;
   label: string;
   cama: string;
+  edad?: number;
+  sexo?: string;
   diagnosticoPrincipal: string;
   codigoCIE10: string;
+  diagnosticosSecundarios?: any[];
+  fechaIngreso?: string;
   diasHospitalizacion: number;
   diasEsperados: string;
+  medicamentos?: any[];
+  antecedentes?: any;
+  estudiosSolicitados?: any[];
+  procedimientos?: any[];
+  evoluciones?: any[];
   riesgo: 'ALTO' | 'MEDIO' | 'BAJO';
   estudiosPendientes: string[];
   hallazgos: any[];
@@ -99,10 +108,19 @@ const AppPage = () => {
       id: audit.paciente.id,
       label: audit.paciente.label || 'N/A',
       cama: 'Cama N/A', // Not in audit response
+      edad: audit.paciente.edad,
+      sexo: audit.paciente.sexo,
       diagnosticoPrincipal: audit.paciente.diagnostico_principal || 'N/A',
       codigoCIE10: audit.paciente.codigo_cie10 || 'N/A',
+      diagnosticosSecundarios: audit.paciente.diagnosticos_secundarios || [],
+      fechaIngreso: audit.paciente.fecha_ingreso || undefined,
       diasHospitalizacion: audit.paciente.dias_hospitalizacion || 0,
-      diasEsperados: 'N/A', // Not in audit response
+      diasEsperados: audit.paciente.dias_esperados || 'N/A',
+      medicamentos: audit.paciente.medicamentos || [],
+      antecedentes: audit.paciente.antecedentes || {},
+      estudiosSolicitados: audit.paciente.estudios_solicitados || [],
+      procedimientos: audit.paciente.procedimientos || [],
+      evoluciones: audit.paciente.evoluciones || [],
       riesgo: audit.riesgo_global.toUpperCase() as 'ALTO' | 'MEDIO' | 'BAJO',
       estudiosPendientes: [],
       hallazgos: audit.hallazgos.map(h => ({

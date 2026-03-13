@@ -150,9 +150,20 @@ export interface AuditSummary {
   paciente: {
     id: string;
     label: string;
+    // sample of fields returned by backend (PatientCaseRead)
+    edad?: number;
+    sexo?: string;
     diagnostico_principal: string | null;
     codigo_cie10: string | null;
-    dias_hospitalizacion: number | null;
+    diagnosticos_secundarios?: any[];
+    fecha_ingreso?: string; // ISO date string
+    dias_hospitalizacion?: number;
+    dias_esperados?: string | null;
+    medicamentos?: any[];
+    antecedentes?: any;
+    estudios_solicitados?: any[];
+    procedimientos?: any[];
+    evoluciones?: any[];
   };
 }
 

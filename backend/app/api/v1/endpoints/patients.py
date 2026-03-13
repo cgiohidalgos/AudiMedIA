@@ -180,9 +180,19 @@ async def get_patient_audit_summary(
         paciente={
             "id": patient.id,
             "label": patient.label,
+            "edad": patient.edad,
+            "sexo": patient.sexo,
             "diagnostico_principal": patient.diagnostico_principal,
             "codigo_cie10": patient.codigo_cie10,
+            "diagnosticos_secundarios": patient.diagnosticos_secundarios,
+            "fecha_ingreso": patient.fecha_ingreso,
             "dias_hospitalizacion": patient.dias_hospitalizacion,
+            "dias_esperados": patient.dias_esperados,
+            "medicamentos": patient.medicamentos,
+            "antecedentes": patient.antecedentes,
+            "estudios_solicitados": patient.estudios_solicitados,
+            "procedimientos": patient.procedimientos,
+            "evoluciones": patient.evoluciones,
         }
     )
 
