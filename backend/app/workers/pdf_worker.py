@@ -200,10 +200,27 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                 patient.exposicion_glosas = (patient.exposicion_glosas or 0.0) + summary["exposicion_glosas_cop"]
 
             # registrar hallazgos nuevos y evitar duplicados
-            existing = await db.execute(
+            # marcar todos los hallazgos previos como heredados antes de procesar
+            existing_q = await db.execute(
                 select(AuditFinding).where(AuditFinding.patient_id == patient.id)
             )
-            seen = {(f.modulo, f.pagina, f.descripcion) for f in existing.scalars().all()}
+            existing_f = existing_q.scalars().all()
+            seen = {(f.modulo, f.pagina, f.descripcion) for f in existing_f}
+            for old in existing_f:
+                old.heredado = True
+            # además cerrar automáticamente los que no aparecen en el texto nuevo
+            closed = []
+            for old in existing_f:
+                if old.resuelto:
+                    continue
+                # si la descripción no se encuentra en el fragmento recién auditado
+                if text_new and old.descripcion not in text_new:
+                    old.resuelto = True
+                    old.estado = "resuelto"
+                    old.fecha_resolucion = datetime.now()
+                    old.notas_resolucion = "Resuelto automáticamente en auditoría incremental"
+                    closed.append(old)
+
             new_findings: list[Finding] = []
             for f in findings:
                 key = (f.modulo.value, f.pagina, f.descripcion)
@@ -222,6 +239,7 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                     pagina=f.pagina,
                     estado="activo",
                     resuelto=False,
+                    heredado=False,
                 ))
                 seen.add(key)
                 new_findings.append(f)

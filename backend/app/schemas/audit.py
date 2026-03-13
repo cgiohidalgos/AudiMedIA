@@ -19,6 +19,7 @@ class AuditFindingRead(BaseModel):
     pagina: Optional[int] = None
     estado: str = "activo"
     resuelto: bool = False
+    heredado: bool = False
     fecha_resolucion: Optional[datetime] = None
     notas_resolucion: Optional[str] = None
     created_at: datetime

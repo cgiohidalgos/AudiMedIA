@@ -71,6 +71,7 @@ class AuditFinding(Base):
     # Estado de resolución
     estado: Mapped[str] = mapped_column(String(20), default="activo")  # activo, resuelto, descartado
     resuelto: Mapped[bool] = mapped_column(Boolean, default=False)  # Mantener compatibilidad
+    heredado: Mapped[bool] = mapped_column(Boolean, default=False)
     fecha_resolucion: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     notas_resolucion: Mapped[str] = mapped_column(Text, nullable=True)
     
