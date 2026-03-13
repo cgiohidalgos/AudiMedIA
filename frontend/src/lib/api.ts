@@ -184,6 +184,17 @@ export interface PatientControlBoard {
   fecha_ultima_auditoria: string | null;
 }
 
+export interface AuditSessionStatus {
+  id: string;
+  patient_id: string | null;
+  ultima_pagina_auditada: number;
+  total_paginas_conocidas: number;
+  porcentaje_completado: number;
+  fecha_ultima_auditoria: string | null;
+  status: string;
+  tiene_progreso_previo: boolean;
+}
+
 export const patientsApi = {
   list: () => request<PatientSummary[]>('/patients/'),
 
@@ -192,6 +203,12 @@ export const patientsApi = {
   findings: (id: string) => request<AuditFinding[]>(`/patients/${id}/findings`),
 
   audit: (id: string) => request<AuditSummary>(`/patients/${id}/audit`),
+
+  getSession: (id: string) =>
+    request<AuditSessionStatus>(`/patients/${id}/session`),
+
+  resetSession: (id: string) =>
+    request<void>(`/patients/${id}/session/reset`, { method: 'POST' }),
 
   controlBoard: (filters?: { risk_level?: string; audit_status?: string }) => {
     const params = new URLSearchParams();
