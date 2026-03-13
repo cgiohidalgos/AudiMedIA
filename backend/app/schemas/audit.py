@@ -37,6 +37,7 @@ class AuditFindingUpdate(BaseModel):
 class AuditSessionRead(BaseModel):
     id: str
     patient_id: Optional[str]
+    historia_numero: Optional[str] = None
     numero_cama: Optional[str]
     ultima_pagina_auditada: int
     total_paginas_conocidas: int

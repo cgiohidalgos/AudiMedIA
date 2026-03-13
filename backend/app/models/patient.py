@@ -34,6 +34,7 @@ class PatientCase(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     label: Mapped[str] = mapped_column(String(20), nullable=False)
+    historia_numero: Mapped[str] = mapped_column(String(50), nullable=True)
     cama: Mapped[str] = mapped_column(String(50), nullable=True)
     edad: Mapped[int] = mapped_column(Integer, nullable=True)
     sexo: Mapped[str] = mapped_column(String(10), nullable=True)

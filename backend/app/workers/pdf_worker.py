@@ -48,33 +48,39 @@ def _parse_date(date_str: str | None) -> date | None:
 
 
 async def process_pdf_task(session_id: str, pdf_path: str, label: str):
-    """Pipeline completo de procesamiento de una historia clínica."""
+    """Pipeline completo de procesamiento de una historia clínica.
+
+    Este método ahora soporta auditoría incremental: si la sesión ya está ligada
+    a un paciente, sólo se vuelven a procesar las páginas que aún no se habían
+    auditado y los hallazgos se agregan al registro existente.
+    """
     try:
         # 1. EXTRAER TEXTO
         await _update_status(session_id, DocumentStatus.extrayendo)  # type: ignore
         pages = extract_text_from_pdf(pdf_path)
         total_pages = get_total_pages(pdf_path)
-        full_text = "\n\n".join(f"[Página {p.page_number}]\n{p.text}" for p in pages)
 
-        # 2. ANONIMIZAR
+        # extraer número de historia (antes de anonimizar) para identificación
+        def _extract_history_number(page_list):
+            import re
+            regex = re.compile(r"\b(?:HC|H\.C\.|Historia\s+[Cc]l[íi]nica)\s*[Nn]?[oO°]?\.?\s*(\d{4,12})\b")
+            for p in page_list:
+                m = regex.search(p.text)
+                if m:
+                    return m.group(1)
+            return None
+        history_num = _extract_history_number(pages)
+
+        # 2. ANONIMIZAR (hace falta para extracción IA)
         await _update_status(session_id, DocumentStatus.anonimizando)
-        pages = anonymize_pages(pages)
-        anon_text = "\n\n".join(f"[Página {p.page_number}]\n{p.text}" for p in pages)
+        pages_anon = anonymize_pages(pages)
 
-        # 3. EXTRAER VARIABLES CLÍNICAS CON IA
-        await _update_status(session_id, DocumentStatus.analizando)
-        clinical_data = await extract_clinical_variables(anon_text)
-        
-        # Validar que no hubo error en la extracción
-        if "error" in clinical_data:
-            logger.error(f"❌ Error en extracción de variables: {clinical_data['error']}")
-            raise Exception(f"Error extrayendo variables: {clinical_data['error']}")
-        
-        logger.info(f"✅ Variables extraídas correctamente para {label}")
+        # función auxiliar para concatenar texto de páginas
+        def _pages_to_text(p_list):
+            return "\n\n".join(f"[Página {p.page_number}]\n{p.text}" for p in p_list)
 
-        # 4. GUARDAR PACIENTE Y EJECUTAR MÓDULOS DE AUDITORÍA
+        # 3. == INCREMENTAL: determinar páginas nuevas ==
         async with AsyncSessionLocal() as db:
-            # Obtener sesión
             result = await db.execute(
                 select(AuditSession).where(AuditSession.id == session_id)
             )
@@ -83,47 +89,126 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                 logger.error(f"❌ Sesión {session_id} no encontrada")
                 return
 
-            # Ejecutar módulos de auditoría
-            findings: list[Finding] = run_all_modules(clinical_data)
-            risk_level = calculate_risk(findings)
-            summary = generate_audit_summary(findings, clinical_data)
-            
-            logger.info(f"📊 Auditoría: {len(findings)} hallazgos, riesgo {risk_level.value}")
+            # si hay paciente vinculado y ya procesó todas las páginas
+            if session.patient_id and session.ultima_pagina_auditada >= total_pages:
+                session.status = DocumentStatus.listo.value
+                session.total_paginas_conocidas = total_pages
+                await db.commit()
+                logger.info(f"📄 Sesión {session_id} no requiere procesamiento adicional")
+                return
 
-            # Convertir fecha_ingreso de string a date
-            fecha_ingreso_date = _parse_date(clinical_data.get("fecha_ingreso"))
-            logger.info(f"📅 Fecha ingreso convertida: {clinical_data.get('fecha_ingreso')} → {fecha_ingreso_date}")
+        # decidir rango a procesar
+        start_page = session.ultima_pagina_auditada or 0
+        pages_to_analyze = extract_text_from_pdf(pdf_path, start_page)
+        if not pages_to_analyze:
+            # nada nuevo
+            async with AsyncSessionLocal() as db:
+                session.status = DocumentStatus.listo.value
+                session.total_paginas_conocidas = total_pages
+                await db.commit()
+            return
 
-            # Crear registro del paciente con campos de auditoría
-            patient = PatientCase(
-                id=str(uuid.uuid4()),
-                label=label,
-                cama=clinical_data.get("cama"),
-                edad=clinical_data.get("edad"),
-                sexo=clinical_data.get("sexo"),
-                diagnostico_principal=clinical_data.get("diagnostico_principal"),
-                codigo_cie10=clinical_data.get("codigo_cie10"),
-                diagnosticos_secundarios=clinical_data.get("diagnosticos_secundarios", []),
-                fecha_ingreso=fecha_ingreso_date,
-                dias_hospitalizacion=clinical_data.get("dias_hospitalizacion"),
-                dias_esperados=clinical_data.get("dias_esperados"),
-                riesgo=risk_level.value,
-                medicamentos=clinical_data.get("medicamentos", []),
-                antecedentes=clinical_data.get("antecedentes", {}),
-                estudios_solicitados=clinical_data.get("estudios_solicitados", []),
-                procedimientos=clinical_data.get("procedimientos", []),
-                evoluciones=clinical_data.get("evoluciones", []),
-                # Campos de auditoría
-                riesgo_auditoria=summary["riesgo_global"],
-                total_hallazgos=summary["total_hallazgos"],
-                exposicion_glosas=summary["exposicion_glosas_cop"],
-                audit_status="completed",
+        anon_to_analyze = anonymize_pages(pages_to_analyze)
+        text_new = _pages_to_text(anon_to_analyze)
+
+        # 4. EXTRAER VARIABLES (sobre TODO el texto para actualizar metadata)
+        await _update_status(session_id, DocumentStatus.analizando)
+        full_anon_text = _pages_to_text(pages_anon)
+        clinical_data = await extract_clinical_variables(full_anon_text)
+        if "error" in clinical_data:
+            logger.error(f"❌ Error en extracción de variables: {clinical_data['error']}")
+            raise Exception(f"Error extrayendo variables: {clinical_data['error']}")
+        logger.info(f"✅ Variables extraídas correctamente para {label}")
+
+        # Ejecutar módulos sobre el conjunto completo de datos (filtraremos duplicados luego)
+        findings: list[Finding] = run_all_modules(clinical_data)
+        risk_level = calculate_risk(findings)
+        summary = generate_audit_summary(findings, clinical_data)
+        logger.info(f"📊 Auditoría incremental: {len(findings)} hallazgos nuevos, riesgo {risk_level.value}")
+
+        fecha_ingreso_date = _parse_date(clinical_data.get("fecha_ingreso"))
+        logger.info(f"📅 Fecha ingreso convertida: {clinical_data.get('fecha_ingreso')} → {fecha_ingreso_date}")
+
+        # guardar o actualizar paciente
+        async with AsyncSessionLocal() as db:
+            # reconectar sesión en este contexto
+            result = await db.execute(
+                select(AuditSession).where(AuditSession.id == session_id)
             )
-            db.add(patient)
-            await db.flush()
+            session = result.scalar_one_or_none()
+            patient = None
+            if session and session.patient_id:
+                patient = await db.get(PatientCase, session.patient_id)
 
-            # Guardar hallazgos con todos los campos
+            # si no hay paciente ligado, intentar buscar por historia+cama
+            if not patient and history_num:
+                q = select(PatientCase).where(PatientCase.historia_numero == history_num)
+                if clinical_data.get("cama"):
+                    q = q.where(PatientCase.cama == clinical_data.get("cama"))
+                res = await db.execute(q)
+                patient = res.scalar_one_or_none()
+
+            if not patient:
+                # crear nuevo paciente
+                patient = PatientCase(
+                    id=str(uuid.uuid4()),
+                    historia_numero=history_num,
+                    label=label,
+                    cama=clinical_data.get("cama"),
+                    edad=clinical_data.get("edad"),
+                    sexo=clinical_data.get("sexo"),
+                    diagnostico_principal=clinical_data.get("diagnostico_principal"),
+                    codigo_cie10=clinical_data.get("codigo_cie10"),
+                    diagnosticos_secundarios=clinical_data.get("diagnosticos_secundarios", []),
+                    fecha_ingreso=fecha_ingreso_date,
+                    dias_hospitalizacion=clinical_data.get("dias_hospitalizacion"),
+                    dias_esperados=clinical_data.get("dias_esperados"),
+                    riesgo=risk_level.value,
+                    medicamentos=clinical_data.get("medicamentos", []),
+                    antecedentes=clinical_data.get("antecedentes", {}),
+                    estudios_solicitados=clinical_data.get("estudios_solicitados", []),
+                    procedimientos=clinical_data.get("procedimientos", []),
+                    evoluciones=clinical_data.get("evoluciones", []),
+                    riesgo_auditoria=summary["riesgo_global"],
+                    total_hallazgos=summary["total_hallazgos"],
+                    exposicion_glosas=summary["exposicion_glosas_cop"],
+                    audit_status="completed",
+                )
+                db.add(patient)
+                await db.flush()
+            else:
+                # actualizar algunos campos en el paciente existente
+                patient.historia_numero = history_num or patient.historia_numero
+                patient.cama = clinical_data.get("cama") or patient.cama
+                patient.edad = clinical_data.get("edad") or patient.edad
+                patient.sexo = clinical_data.get("sexo") or patient.sexo
+                patient.diagnostico_principal = clinical_data.get("diagnostico_principal") or patient.diagnostico_principal
+                patient.codigo_cie10 = clinical_data.get("codigo_cie10") or patient.codigo_cie10
+                patient.diagnosticos_secundarios = clinical_data.get("diagnosticos_secundarios", patient.diagnosticos_secundarios)
+                patient.fecha_ingreso = fecha_ingreso_date or patient.fecha_ingreso
+                patient.dias_hospitalizacion = clinical_data.get("dias_hospitalizacion") or patient.dias_hospitalizacion
+                patient.dias_esperados = clinical_data.get("dias_esperados") or patient.dias_esperados
+                patient.riesgo = risk_level.value
+                patient.medicamentos = clinical_data.get("medicamentos", patient.medicamentos)
+                patient.antecedentes = clinical_data.get("antecedentes", patient.antecedentes)
+                patient.estudios_solicitados = clinical_data.get("estudios_solicitados", patient.estudios_solicitados)
+                patient.procedimientos = clinical_data.get("procedimientos", patient.procedimientos)
+                patient.evoluciones = clinical_data.get("evoluciones", patient.evoluciones)
+                # actualizar campos de auditoría acumulados
+                patient.riesgo_auditoria = summary["riesgo_global"]
+                patient.total_hallazgos = (patient.total_hallazgos or 0) + summary["total_hallazgos"]
+                patient.exposicion_glosas = (patient.exposicion_glosas or 0.0) + summary["exposicion_glosas_cop"]
+
+            # registrar hallazgos nuevos y evitar duplicados
+            existing = await db.execute(
+                select(AuditFinding).where(AuditFinding.patient_id == patient.id)
+            )
+            seen = {(f.modulo, f.pagina, f.descripcion) for f in existing.scalars().all()}
+            new_findings: list[Finding] = []
             for f in findings:
+                key = (f.modulo.value, f.pagina, f.descripcion)
+                if key in seen:
+                    continue
                 db.add(AuditFinding(
                     id=str(uuid.uuid4()),
                     patient_id=patient.id,
@@ -138,9 +223,21 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                     estado="activo",
                     resuelto=False,
                 ))
+                seen.add(key)
+                new_findings.append(f)
 
-            # Actualizar sesión
+            # recompute resumen solo para hallazgos nuevos (para sumar totales)
+            new_summary = generate_audit_summary(new_findings, clinical_data) if new_findings else {"riesgo_global": summary["riesgo_global"], "total_hallazgos": 0, "exposicion_glosas_cop": 0.0}
+
+            # actualizar paciente acumulativos
+            patient.riesgo_auditoria = summary["riesgo_global"]
+            patient.total_hallazgos = (patient.total_hallazgos or 0) + new_summary["total_hallazgos"]
+            patient.exposicion_glosas = (patient.exposicion_glosas or 0.0) + new_summary["exposicion_glosas_cop"]
+
+            # actualizar sesión
             session.patient_id = patient.id
+            session.historia_numero = history_num
+            session.numero_cama = clinical_data.get("cama")
             session.total_paginas_conocidas = total_pages
             session.ultima_pagina_auditada = total_pages
             session.status = DocumentStatus.listo.value
@@ -148,9 +245,13 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
             session.fecha_ultima_auditoria = datetime.now(timezone.utc)
 
             await db.commit()
-            
             logger.info(f"✅ Procesamiento completado para {label} (paciente {patient.id})")
-            logger.info(f"📄 {total_pages} páginas procesadas, {len(findings)} hallazgos registrados")
+            logger.info(f"📄 {total_pages} páginas reconocidas, {len(new_findings)} hallazgos nuevos")
+
+    except Exception as e:
+        logger.error(f"❌ ERROR procesando PDF (session={session_id}): {type(e).__name__}: {str(e)}")
+        logger.exception("Traceback completo:")
+        await _update_status(session_id, DocumentStatus.error)  # type: ignore
 
     except Exception as e:
         logger.error(f"❌ ERROR procesando PDF (session={session_id}): {type(e).__name__}: {str(e)}")

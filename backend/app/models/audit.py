@@ -30,6 +30,8 @@ class AuditSession(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     patient_id: Mapped[str] = mapped_column(String(36), ForeignKey("patient_cases.id"), nullable=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    # identificación clínica (historia + cama) usada para auditoría incremental
+    historia_numero: Mapped[str] = mapped_column(String(50), nullable=True)
     numero_cama: Mapped[str] = mapped_column(String(50), nullable=True)
     ultima_pagina_auditada: Mapped[int] = mapped_column(Integer, default=0)
     total_paginas_conocidas: Mapped[int] = mapped_column(Integer, default=0)

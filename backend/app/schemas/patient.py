@@ -10,6 +10,7 @@ from app.schemas.audit import AuditFindingRead, AuditFindingUpdate
 class PatientCaseRead(BaseModel):
     id: str
     label: str
+    historia_numero: Optional[str]
     cama: Optional[str]
     edad: Optional[int]
     sexo: Optional[str]
