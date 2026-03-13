@@ -252,6 +252,9 @@ const AnalysisPane = ({ patient, onOpenChat, onTraceToSource }: AnalysisPaneProp
                     <div className="flex-1">
                       <p className={`font-body text-sm ${f.resuelto ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                         {f.descripcion}
+                        {f.heredado && !f.resuelto && (
+                          <span className="ml-2 text-xs text-muted-foreground italic">(heredado)</span>
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

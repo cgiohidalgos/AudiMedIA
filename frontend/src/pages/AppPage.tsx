@@ -130,6 +130,7 @@ const AppPage = () => {
         riesgo: h.riesgo.toUpperCase(),
         pagina: h.pagina,
         resuelto: h.estado === 'resuelto',
+        heredado: h.heredado || false,
         recomendacion: h.recomendacion,
         categoria: h.categoria,
         normativa_aplicable: h.normativa_aplicable,

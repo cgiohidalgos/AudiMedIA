@@ -131,6 +131,7 @@ export interface AuditFinding {
   riesgo: 'bajo' | 'medio' | 'alto';
   pagina: number | null;
   resuelto: boolean;
+  heredado: boolean;
   recomendacion: string | null;
   categoria: string | null;
   normativa_aplicable: string | null;
