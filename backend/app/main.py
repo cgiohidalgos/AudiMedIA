@@ -1,7 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.db.session import engine, Base, AsyncSessionLocal
@@ -9,10 +10,15 @@ from app.db.seed import seed_default_users
 
 # Configurar logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+# Silenciar libs muy verbosas
+for _noisy in ('httpx', 'httpcore', 'openai._base_client', 'multipart'):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 # Importar modelos para que SQLAlchemy los registre
 from app.models import user, patient, audit  # noqa: F401
@@ -50,6 +56,18 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.debug("→ %s %s", request.method, request.url.path)
+    try:
+        response = await call_next(request)
+        logger.debug("← %s %s %s", request.method, request.url.path, response.status_code)
+        return response
+    except Exception as exc:
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 @app.get("/health")

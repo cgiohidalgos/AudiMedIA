@@ -18,7 +18,7 @@ const statusLabels: Record<FileStatus, string> = {
 const historyLabels = ['Historia A', 'Historia B', 'Historia C', 'Historia D', 'Historia E'];
 
 interface UploadScreenProps {
-  onStartAnalysis: () => void;
+  onStartAnalysis: (hadErrors: boolean) => void;
 }
 
 const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
@@ -106,10 +106,15 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
         }));
 
         const allDone = statuses.every(s => s?.status === 'listo' || s?.status === 'error');
-        if (allDone) break;
+        if (allDone) {
+          const hadErrors = statuses.every(s => s?.status === 'error');
+          setTimeout(() => onStartAnalysis(hadErrors), 800);
+          return;
+        }
       }
 
-      setTimeout(() => onStartAnalysis(), 800);
+      // Timeout agotado — considerar como error
+      setTimeout(() => onStartAnalysis(true), 800);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error al procesar los archivos';
       toast.error(message);

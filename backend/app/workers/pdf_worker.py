@@ -80,32 +80,40 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
             return "\n\n".join(f"[Página {p.page_number}]\n{p.text}" for p in p_list)
 
         # 3. == INCREMENTAL: determinar páginas nuevas ==
+        start_page = 0
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(AuditSession).where(AuditSession.id == session_id)
             )
-            session = result.scalar_one_or_none()
-            if not session:
+            session_row = result.scalar_one_or_none()
+            if not session_row:
                 logger.error(f"❌ Sesión {session_id} no encontrada")
                 return
 
             # si hay paciente vinculado y ya procesó todas las páginas
-            if session.patient_id and session.ultima_pagina_auditada >= total_pages:
-                session.status = DocumentStatus.listo.value
-                session.total_paginas_conocidas = total_pages
+            if session_row.patient_id and (session_row.ultima_pagina_auditada or 0) >= total_pages:
+                session_row.status = DocumentStatus.listo.value
+                session_row.total_paginas_conocidas = total_pages
                 await db.commit()
                 logger.info(f"📄 Sesión {session_id} no requiere procesamiento adicional")
                 return
 
+            # leer el valor mientras la sesión está abierta
+            start_page = session_row.ultima_pagina_auditada or 0
+
         # decidir rango a procesar
-        start_page = session.ultima_pagina_auditada or 0
         pages_to_analyze = extract_text_from_pdf(pdf_path, start_page)
         if not pages_to_analyze:
-            # nada nuevo
+            # nada nuevo — actualizar estado con una sesión fresca
             async with AsyncSessionLocal() as db:
-                session.status = DocumentStatus.listo.value
-                session.total_paginas_conocidas = total_pages
-                await db.commit()
+                result = await db.execute(
+                    select(AuditSession).where(AuditSession.id == session_id)
+                )
+                session_row2 = result.scalar_one_or_none()
+                if session_row2:
+                    session_row2.status = DocumentStatus.listo.value
+                    session_row2.total_paginas_conocidas = total_pages
+                    await db.commit()
             return
 
         anon_to_analyze = anonymize_pages(pages_to_analyze)
@@ -149,7 +157,7 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                 patient = res.scalar_one_or_none()
 
             if not patient:
-                # crear nuevo paciente
+                # crear nuevo paciente (totales se acumularán tras deduplicación)
                 patient = PatientCase(
                     id=str(uuid.uuid4()),
                     historia_numero=history_num,
@@ -170,9 +178,9 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                     procedimientos=clinical_data.get("procedimientos", []),
                     evoluciones=clinical_data.get("evoluciones", []),
                     riesgo_auditoria=summary["riesgo_global"],
-                    total_hallazgos=summary["total_hallazgos"],
-                    exposicion_glosas=summary["exposicion_glosas_cop"],
-                    audit_status="completed",
+                    total_hallazgos=0,
+                    exposicion_glosas=0.0,
+                    audit_status="pending",
                 )
                 db.add(patient)
                 await db.flush()
@@ -194,10 +202,7 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                 patient.estudios_solicitados = clinical_data.get("estudios_solicitados", patient.estudios_solicitados)
                 patient.procedimientos = clinical_data.get("procedimientos", patient.procedimientos)
                 patient.evoluciones = clinical_data.get("evoluciones", patient.evoluciones)
-                # actualizar campos de auditoría acumulados
-                patient.riesgo_auditoria = summary["riesgo_global"]
-                patient.total_hallazgos = (patient.total_hallazgos or 0) + summary["total_hallazgos"]
-                patient.exposicion_glosas = (patient.exposicion_glosas or 0.0) + summary["exposicion_glosas_cop"]
+                # Los totales (total_hallazgos, exposicion_glosas) se acumulan tras la deduplicación
 
             # registrar hallazgos nuevos y evitar duplicados
             # marcar todos los hallazgos previos como heredados antes de procesar
@@ -247,10 +252,11 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
             # recompute resumen solo para hallazgos nuevos (para sumar totales)
             new_summary = generate_audit_summary(new_findings, clinical_data) if new_findings else {"riesgo_global": summary["riesgo_global"], "total_hallazgos": 0, "exposicion_glosas_cop": 0.0}
 
-            # actualizar paciente acumulativos
+            # actualizar paciente acumulativos (solo hallazgos NUEVOS, evita doble-conteo)
             patient.riesgo_auditoria = summary["riesgo_global"]
             patient.total_hallazgos = (patient.total_hallazgos or 0) + new_summary["total_hallazgos"]
             patient.exposicion_glosas = (patient.exposicion_glosas or 0.0) + new_summary["exposicion_glosas_cop"]
+            patient.audit_status = "completed"
 
             # actualizar sesión
             session.patient_id = patient.id
@@ -265,11 +271,6 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
             await db.commit()
             logger.info(f"✅ Procesamiento completado para {label} (paciente {patient.id})")
             logger.info(f"📄 {total_pages} páginas reconocidas, {len(new_findings)} hallazgos nuevos")
-
-    except Exception as e:
-        logger.error(f"❌ ERROR procesando PDF (session={session_id}): {type(e).__name__}: {str(e)}")
-        logger.exception("Traceback completo:")
-        await _update_status(session_id, DocumentStatus.error)  # type: ignore
 
     except Exception as e:
         logger.error(f"❌ ERROR procesando PDF (session={session_id}): {type(e).__name__}: {str(e)}")

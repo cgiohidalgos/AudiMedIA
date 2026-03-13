@@ -15,10 +15,12 @@ SYSTEM_PROMPT = """Eres un asistente de auditoría médica colombiana experto en
 - Codificación: CIE10, CUPS
 - Glosas hospitalarias y auditoría concurrente
 
-Responde las preguntas del auditor médico con base ÚNICAMENTE en la información de la historia clínica.
-Cada pregunta es diferente - analiza cuidadosamente lo que te preguntan y responde específicamente.
-Sé técnico, preciso y varía tus respuestas según la pregunta.
-Si no encuentras la información, dilo claramente."""
+INSTRUCCIONES:
+1. Responde ÚNICAMENTE con base en la información de la historia clínica proporcionada.
+2. Cuando cites información específica del documento, indica la fuente en formato: (página X) o (págs. X, Y).
+3. Sé técnico, preciso y varía tus respuestas según la pregunta.
+4. Si no encuentras la información, dilo claramente.
+5. Para análisis clínicos, finaliza con: '⚠️ Esta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisión clínica profesional.'"""
 
 
 async def answer_question(patient, question: str, history: list) -> ChatResponse:
@@ -86,3 +88,52 @@ DATOS COMPLETOS:
         referencias.append(ChatReference(pagina=int(match), fragmento=""))
 
     return ChatResponse(answer=answer, referencias=referencias)
+
+
+async def answer_question_multi(patients: list, question: str) -> ChatResponse:
+    """Genera respuesta al chat para múltiples pacientes simultáneamente."""
+    patients_context = ""
+    for patient in patients[:10]:  # máximo 10 pacientes en contexto
+        evols = patient.evoluciones or []
+        last_evol_date = "No registrada"
+        if evols and isinstance(evols[-1], dict):
+            last_evol_date = evols[-1].get("fecha") or evols[-1].get("date") or "No registrada"
+        patients_context += (
+            f"\n• {patient.label} | {patient.diagnostico_principal or 'Sin diagnóstico'}"
+            f" | {patient.dias_hospitalizacion or 0} días"
+            f" | {len(evols)} evoluciones (últ: {last_evol_date})"
+            f" | {len(patient.medicamentos or [])} meds"
+            f" | {len(patient.estudios_solicitados or [])} estudios"
+        )
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                f"Eres un asistente de auditoría médica. Tienes el resumen de {len(patients)} pacientes "
+                f"hospitalizados. Responde la pregunta analizando todos los pacientes. "
+                f"Identifica cada uno por su label. Sé conciso y estructurado.\n\n"
+                f"PACIENTES:{patients_context}"
+            ),
+        },
+        {"role": "user", "content": question},
+    ]
+
+    try:
+        response = await client.chat.completions.create(
+            model=settings.LLM_MODEL,
+            messages=messages,
+            temperature=0.4,
+            max_tokens=700,
+        )
+        answer = response.choices[0].message.content
+        logger.info(f"💬 Multi-chat respondido para {len(patients)} pacientes")
+    except Exception as e:
+        logger.error(f"❌ ERROR en multi-chat: {type(e).__name__}: {str(e)}")
+        raise
+
+    return ChatResponse(
+        answer=answer,
+        referencias=[],
+        patient_ids=[str(p.id) for p in patients],
+    )

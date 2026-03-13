@@ -1,6 +1,7 @@
 import os
 import uuid
 import hashlib
+import logging
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from app.models.user import AppRole
 from app.core.config import settings
 from app.workers.pdf_worker import process_pdf_task
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/upload", tags=["upload"])
 
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -33,26 +35,36 @@ async def upload_pdfs(
     responses = []
 
     for idx, file in enumerate(files):
+        logger.info("[upload] archivo recibido: %s (idx=%d)", file.filename, idx)
         if not file.filename.lower().endswith(".pdf"):
+            logger.warning("[upload] rechazado (no PDF): %s", file.filename)
             raise HTTPException(status_code=400, detail=f"{file.filename} no es un PDF válido")
 
         content = await file.read()
+        logger.debug("[upload] tamaño: %.1f KB", len(content) / 1024)
         if len(content) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+            logger.warning("[upload] rechazado (tamaño): %s", file.filename)
             raise HTTPException(status_code=413, detail=f"{file.filename} supera el tamaño máximo")
 
         file_hash = hashlib.sha256(content).hexdigest()
         file_path = os.path.join(settings.UPLOAD_DIR, f"{file_hash}.pdf")
+        logger.debug("[upload] hash: %s", file_hash)
 
         with open(file_path, "wb") as f:
             f.write(content)
 
         # Verificar si es una re-carga (auditoría incremental)
+        # Solo reutilizar si la sesión anterior terminó bien (listo/cargando/analizando)
         result = await db.execute(
-            select(AuditSession).where(AuditSession.pdf_hash == file_hash)
+            select(AuditSession).where(
+                AuditSession.pdf_hash == file_hash,
+                AuditSession.status != DocumentStatus.error.value,
+            )
         )
         existing = result.scalar_one_or_none()
 
         if existing:
+            logger.info("[upload] documento ya existe, retornando sesión: %s", existing.id)
             responses.append(UploadResponse(
                 session_id=existing.id,
                 status=existing.status,
@@ -74,6 +86,7 @@ async def upload_pdfs(
         await db.refresh(session)
 
         background_tasks.add_task(process_pdf_task, session_id, file_path, label)
+        logger.info("[upload] tarea en cola: session_id=%s label=%s", session_id, label)
 
         responses.append(UploadResponse(
             session_id=session_id,
@@ -81,6 +94,7 @@ async def upload_pdfs(
             message=f"'{file.filename}' cargado como {label}. Procesando...",
         ))
 
+    logger.info("[upload] respuestas enviadas: %d", len(responses))
     return responses
 
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { RoleGuard } from '@/components/RoleGuard';
+import AppNavbar from '@/components/AppNavbar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -202,32 +203,22 @@ const DashboardPage = () => {
   return (
     <RoleGuard roles={['admin', 'coordinador']}>
       <div className="min-h-screen bg-background">
-        {/* Header */}
-        <header className="border-b border-border bg-card">
-          <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="font-display text-2xl font-bold text-foreground">Dashboard Financiero</h1>
-              <Select value={periodo} onValueChange={(v) => setPeriodo(v as any)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dia">Último día</SelectItem>
-                  <SelectItem value="semana">Última semana</SelectItem>
-                  <SelectItem value="mes">Último mes</SelectItem>
-                  <SelectItem value="anio">Último año</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">{user?.email}</span>
-              <Button variant="outline" size="sm" onClick={signOut}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Salir
-              </Button>
-            </div>
-          </div>
-        </header>
+        <AppNavbar
+          title="Dashboard Financiero"
+          extraActions={
+            <Select value={periodo} onValueChange={(v) => setPeriodo(v as any)}>
+              <SelectTrigger className="w-[160px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dia">Último día</SelectItem>
+                <SelectItem value="semana">Última semana</SelectItem>
+                <SelectItem value="mes">Último mes</SelectItem>
+                <SelectItem value="anio">Último año</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        />
 
         <div className="container mx-auto px-6 py-8 space-y-8">
           {/* KPIs Grid */}

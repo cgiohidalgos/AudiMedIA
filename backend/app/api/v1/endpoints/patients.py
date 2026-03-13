@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+import os
+import logging
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
@@ -7,10 +9,11 @@ from app.models.user import User
 from app.models.patient import PatientCase
 from app.models.audit import AuditFinding
 from app.schemas.patient import PatientCaseRead, PatientCaseSummary, AuditSummaryResponse, PatientControlBoard
-from app.schemas.audit import AuditFindingRead, AuditFindingUpdate, AuditSessionStatus
+from app.schemas.audit import AuditFindingRead, AuditFindingUpdate, AuditSessionStatus, ResetResponse
 from app.api.v1.deps import get_current_user, require_role
 from app.models.user import AppRole
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/patients", tags=["patients"])
 
 
@@ -136,18 +139,20 @@ async def get_audit_session_status(
     )
 
 
-@router.post("/{patient_id}/session/reset", status_code=204)
+@router.post("/{patient_id}/session/reset", response_model=ResetResponse)
 async def reset_audit_session(
     patient_id: str,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(AppRole.admin, AppRole.auditor)),
 ):
     """
     Reinicia la sesión de auditoría de un paciente.
-    Elimina todos los hallazgos existentes y restablece el contador de páginas a 0,
-    permitiendo que se procese de nuevo el PDF desde el inicio.
+    Si el PDF sigue en disco, relanza el análisis automáticamente (Opción B).
+    Si no existe en disco, deja el estado como 'pending' para que se suba de nuevo.
     """
     from app.models.audit import AuditSession, AuditFinding
+    from app.workers.pdf_worker import process_pdf_task
     from sqlalchemy import delete, update
 
     # Verificar que el paciente existe
@@ -156,17 +161,34 @@ async def reset_audit_session(
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
+    # Obtener la sesión más reciente que tenga pdf_path
+    session_result = await db.execute(
+        select(AuditSession)
+        .where(AuditSession.patient_id == patient_id)
+        .where(AuditSession.pdf_path.isnot(None))
+        .order_by(AuditSession.updated_at.desc())
+        .limit(1)
+    )
+    audit_session = session_result.scalar_one_or_none()
+    pdf_exists = (
+        audit_session is not None
+        and audit_session.pdf_path is not None
+        and os.path.exists(audit_session.pdf_path)
+    )
+
     # Eliminar todos los hallazgos del paciente
     await db.execute(delete(AuditFinding).where(AuditFinding.patient_id == patient_id))
 
-    # Resetear la sesión de auditoría
+    # Resetear la sesión: limpiar hash (permite re-subir mismo PDF), poner contadores a 0
+    new_status = "cargando" if pdf_exists else "pending"
     await db.execute(
         update(AuditSession)
         .where(AuditSession.patient_id == patient_id)
         .values(
             ultima_pagina_auditada=0,
-            status="pending",
+            status=new_status,
             fecha_ultima_auditoria=None,
+            pdf_hash=None,
         )
     )
 
@@ -183,6 +205,24 @@ async def reset_audit_session(
     )
 
     await db.commit()
+
+    # Relanzar análisis si el archivo existe en disco
+    if pdf_exists:
+        background_tasks.add_task(
+            process_pdf_task,
+            audit_session.id,
+            audit_session.pdf_path,
+            patient.label,
+        )
+        return ResetResponse(
+            relaunched=True,
+            message="Re-análisis iniciado en background. Los resultados se actualizarán en breve.",
+        )
+
+    return ResetResponse(
+        relaunched=False,
+        message="Archivo PDF no encontrado en disco. Sube el PDF para re-analizar.",
+    )
 
 
 @router.get("/{patient_id}", response_model=PatientCaseRead)

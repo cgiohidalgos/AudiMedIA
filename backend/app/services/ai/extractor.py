@@ -1,6 +1,7 @@
 """
 Servicio de extracción estructurada de variables clínicas usando LLM.
 """
+import asyncio
 import json
 import logging
 from openai import AsyncOpenAI
@@ -94,33 +95,30 @@ async def _merge_clinical_dicts(base: dict, other: dict) -> dict:
 async def extract_clinical_variables(text: str) -> dict:
     """Extrae variables clínicas estructuradas del texto de la historia clínica.
 
-    Maneja textos largos dividiéndolos en fragmentos para evitar cortar información
-    importante en el prompt del modelo. Combina los resultados parciales en un
-    único diccionario con lógica de fusión razonable.
+    Divide el texto en fragmentos y los procesa en PARALELO para reducir
+    la latencia total. Combina los resultados parciales en un único diccionario.
     """
     try:
         logger.info(f"🔍 Extrayendo variables clínicas (texto: {len(text)} chars)...")
         logger.info(f"🔑 API Key configurada: {settings.OPENAI_API_KEY[:20]}...")
         logger.info(f"🤖 Modelo: {settings.LLM_MODEL}")
 
-        # dividir en pedazos de aproximadamente N chars
-        max_chunk = 8000
+        # Fragmentos grandes para minimizar el número de llamadas a la API
+        max_chunk = 30000
         chunks = []
         start = 0
         while start < len(text):
             end = min(start + max_chunk, len(text))
-            # intentar romper en salto de línea para no cortar frases
             if end < len(text):
                 nl = text.rfind("\n", start, end)
                 if nl > start:
                     end = nl
             chunks.append(text[start:end])
             start = end
-        logger.info(f"🔍 Texto dividido en {len(chunks)} fragmento(s) para extracción")
+        logger.info(f"🔍 Texto dividido en {len(chunks)} fragmento(s) para extracción (paralelo)")
 
-        combined: dict = {}
-        for idx, chunk in enumerate(chunks, start=1):
-            logger.info(f"🔍 Procesando fragmento {idx}/{len(chunks)} (size {len(chunk)})")
+        async def _call_chunk(chunk: str, idx: int) -> dict:
+            logger.info(f"🔍 Fragmento {idx}/{len(chunks)} iniciando (size {len(chunk)})")
             response = await client.chat.completions.create(
                 model=settings.LLM_MODEL,
                 messages=[
@@ -131,8 +129,15 @@ async def extract_clinical_variables(text: str) -> dict:
                 response_format={"type": "json_object"},
             )
             result = json.loads(response.choices[0].message.content)
-            logger.info(f"  ✅ Resultado fragmento {idx}: {json.dumps(result, ensure_ascii=False)}")
-            combined = _merge_clinical_dicts(combined, result)
+            logger.info(f"  ✅ Fragmento {idx} completado")
+            return result
+
+        # Ejecutar todos los fragmentos en paralelo
+        results = await asyncio.gather(*[_call_chunk(c, i + 1) for i, c in enumerate(chunks)])
+
+        combined: dict = {}
+        for r in results:
+            combined = await _merge_clinical_dicts(combined, r)
 
         logger.info(f"✅ Extracción completa, campos consolidados: {len(combined)}")
         logger.info(f"📊 Datos extraídos finales: {json.dumps(combined, ensure_ascii=False, indent=2)}")

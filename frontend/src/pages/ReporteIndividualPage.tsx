@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { patientsApi, AuditSummary, AuditSessionStatus } from '@/lib/api';
+import { patientsApi, AuditSummary, AuditSessionStatus, ResetResponse } from '@/lib/api';
 import { toast } from 'sonner';
+import AppNavbar from '@/components/AppNavbar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +42,8 @@ const ReporteIndividualPage = () => {
   const [exporting, setExporting] = useState<'pdf' | 'excel' | 'html' | null>(null);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
+  const [reanalyzingStatus, setReanalyzingStatus] = useState('');
 
   useEffect(() => {
     if (id) {
@@ -77,17 +80,56 @@ const ReporteIndividualPage = () => {
 
   const fetchAuditData = fetchReportData;
 
+  const pollUntilDone = async () => {
+    setIsReanalyzing(true);
+    const maxAttempts = 60;
+    let attempts = 0;
+    const statusLabels: Record<string, string> = {
+      cargando: 'Cargando PDF...',
+      anonimizando: 'Anonimizando...',
+      extrayendo: 'Extrayendo variables...',
+      analizando: 'Analizando hallazgos...',
+      listo: 'Completado',
+      error: 'Error en el análisis',
+    };
+    while (attempts < maxAttempts) {
+      await new Promise(r => setTimeout(r, 3000));
+      attempts++;
+      try {
+        const sessionData = await patientsApi.getSession(id!);
+        setSession(sessionData);
+        setReanalyzingStatus(statusLabels[sessionData.status] ?? sessionData.status);
+        if (sessionData.status === 'listo' || sessionData.status === 'error') {
+          if (sessionData.status === 'listo') {
+            await fetchReportData();
+            toast.success('Re-análisis completado. Hallazgos actualizados.');
+          } else {
+            toast.error('Error durante el re-análisis. Revisa los logs del backend.');
+          }
+          break;
+        }
+      } catch {}
+    }
+    setIsReanalyzing(false);
+    setReanalyzingStatus('');
+  };
+
   const handleResetSession = async () => {
     if (!id) return;
     try {
       setResetting(true);
-      await patientsApi.resetSession(id);
-      toast.success('Auditoría reiniciada. Por favor re-sube el PDF para volver a procesar.');
+      const result: ResetResponse = await patientsApi.resetSession(id);
       setShowResumeModal(false);
-      navigate('/app');
+      setResetting(false);
+      if (result.relaunched) {
+        toast.success('Re-análisis iniciado. Los resultados se actualizarán automáticamente.');
+        pollUntilDone();
+      } else {
+        toast.info('Archivo PDF no encontrado en disco. Carga el PDF nuevamente para re-analizar.');
+        navigate('/app');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Error al reiniciar la sesión');
-    } finally {
       setResetting(false);
     }
   };
@@ -303,61 +345,49 @@ const ReporteIndividualPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Header */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" onClick={() => navigate('/app')}>
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">📋 Reporte de Auditoría</h1>
-                <p className="text-gray-600 mt-1">Sistema AudiMedIA - Auditoría Concurrente con IA</p>
-              </div>
-            </div>
-            
-            {/* Botones de exportación */}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleExportHtml}
-                disabled={exporting !== null}
-              >
-                {exporting === 'html' ? (
-                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                ) : (
-                  <Code className="mr-2 h-4 w-4" />
-                )}
-                HTML
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleExportExcel}
-                disabled={exporting !== null}
-              >
-                {exporting === 'excel' ? (
-                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                ) : (
-                  <Sheet className="mr-2 h-4 w-4" />
-                )}
-                Excel
-              </Button>
-              <Button
-                onClick={handleExportPdf}
-                disabled={exporting !== null}
-              >
-                {exporting === 'pdf' ? (
-                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                ) : (
-                  <FileDown className="mr-2 h-4 w-4" />
-                )}
-                PDF
-              </Button>
-            </div>
-          </div>
+      {/* Banner de re-análisis en progreso */}
+      {isReanalyzing && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-3 flex items-center gap-3">
+          <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full shrink-0" />
+          <span className="text-sm text-blue-800 font-medium">
+            Re-análisis en curso: {reanalyzingStatus || 'Procesando...'}
+          </span>
+          <span className="text-xs text-blue-600 ml-auto">Los hallazgos se actualizarán automáticamente al finalizar.</span>
         </div>
-      </div>
+      )}
+
+      {/* Header */}
+      <AppNavbar
+        title="Reporte de Auditoría"
+        extraActions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportHtml} disabled={exporting !== null}>
+              {exporting === 'html' ? (
+                <div className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full mr-1" />
+              ) : (
+                <Code className="mr-1 h-3.5 w-3.5" />
+              )}
+              HTML
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={exporting !== null}>
+              {exporting === 'excel' ? (
+                <div className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full mr-1" />
+              ) : (
+                <Sheet className="mr-1 h-3.5 w-3.5" />
+              )}
+              Excel
+            </Button>
+            <Button size="sm" onClick={handleExportPdf} disabled={exporting !== null}>
+              {exporting === 'pdf' ? (
+                <div className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full mr-1" />
+              ) : (
+                <FileDown className="mr-1 h-3.5 w-3.5" />
+              )}
+              PDF
+            </Button>
+          </div>
+        }
+      />
 
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
 
