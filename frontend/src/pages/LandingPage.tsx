@@ -418,7 +418,7 @@ const LandingPage = () => {
               Solicitar demostración gratuita <ArrowRight className="h-5 w-5" />
             </button>
             <button
-              onClick={() => window.location.href = 'mailto:contacto@audiomedia.co'}
+              onClick={() => window.location.href = 'mailto:andreliz33@hotmail.es'}
               className="font-body text-base border-2 border-white/30 px-8 py-4 rounded-lg hover:bg-white/10 transition-colors"
             >
               Hablar con un asesor
@@ -527,25 +527,25 @@ const LandingPage = () => {
                 <li className="flex items-start gap-2">
                   <Mail className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <a
-                    href="mailto:contacto@audiomedia.co"
+                    href="mailto:andreliz33@hotmail.es"
                     className="font-body text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    contacto@audiomedia.co
+                    andreliz33@hotmail.es
                   </a>
                 </li>
                 <li className="flex items-start gap-2">
                   <Phone className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <a
-                    href="tel:+5716012345"
+                    href="tel:+573167478878"
                     className="font-body text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    +57 (601) 234 5678
+                    +57 3167478878
                   </a>
                 </li>
                 <li className="flex items-start gap-2">
                   <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <span className="font-body text-sm text-muted-foreground">
-                    Bogotá, Colombia
+                    Cali, Colombia
                   </span>
                 </li>
               </ul>
