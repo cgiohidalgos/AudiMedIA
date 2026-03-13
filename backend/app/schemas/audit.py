@@ -60,6 +60,11 @@ class ChatRequest(BaseModel):
     multi_historia: bool = False
 
 
+class ChatMultiRequest(BaseModel):
+    question: str
+    patient_ids: List[str]
+
+
 class ChatReference(BaseModel):
     pagina: int
     fragmento: str

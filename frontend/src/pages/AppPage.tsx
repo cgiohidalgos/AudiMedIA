@@ -320,6 +320,7 @@ const AppPage = () => {
           <ChatPanel
             patientId={selectedPatient.id}
             patientLabel={selectedPatient.label}
+            allPatientIds={patients.map(p => p.id)}
             onClose={() => setChatOpen(false)}
           />
         )}

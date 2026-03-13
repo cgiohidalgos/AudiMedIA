@@ -6,10 +6,10 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.patient import PatientCase
 from app.models.audit import ChatMessage
-from app.schemas.audit import ChatRequest, ChatResponse
+from app.schemas.audit import ChatRequest, ChatResponse, ChatMultiRequest
 from app.api.v1.deps import get_current_user, require_role
 from app.models.user import AppRole
-from app.services.ai.chat_service import answer_question
+from app.services.ai.chat_service import answer_question, answer_question_multi
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -74,3 +74,24 @@ async def get_chat_history(
     )
     messages = result.scalars().all()
     return [{"role": m.role, "content": m.content, "referencias": m.referencias} for m in messages]
+
+
+@router.post("/multi-history", response_model=ChatResponse)
+async def chat_multi_history(
+    payload: ChatMultiRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(AppRole.admin, AppRole.auditor, AppRole.coordinador)),
+):
+    """Chat que cruza múltiples historias clínicas simultáneamente."""
+    if not payload.patient_ids:
+        raise HTTPException(status_code=400, detail="Se requiere al menos un paciente")
+
+    result = await db.execute(
+        select(PatientCase).where(PatientCase.id.in_(payload.patient_ids))
+    )
+    patients = result.scalars().all()
+
+    if not patients:
+        raise HTTPException(status_code=404, detail="No se encontraron pacientes")
+
+    return await answer_question_multi(list(patients), payload.question)

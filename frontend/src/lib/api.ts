@@ -288,6 +288,7 @@ export interface ChatMessage {
 export interface ChatResponse {
   answer: string;
   referencias: { pagina: number; fragmento: string }[];
+  patient_ids?: string[];
 }
 
 export const chatApi = {
@@ -299,6 +300,12 @@ export const chatApi = {
 
   history: (patientId: string) =>
     request<ChatMessage[]>(`/chat/history/${patientId}`),
+
+  askMulti: (question: string, patient_ids: string[]) =>
+    request<ChatResponse>('/chat/multi-history', {
+      method: 'POST',
+      body: JSON.stringify({ question, patient_ids }),
+    }),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
