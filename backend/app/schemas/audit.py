@@ -76,6 +76,11 @@ class ChatResponse(BaseModel):
     patient_ids: List[str] = []
 
 
+class ResetResponse(BaseModel):
+    relaunched: bool
+    message: str
+
+
 class AuditSessionStatus(BaseModel):
     """Estado enriquecido de la sesión de auditoría para el frontend."""
     id: str

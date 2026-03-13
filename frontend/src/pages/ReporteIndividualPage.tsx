@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { patientsApi, AuditSummary, AuditSessionStatus } from '@/lib/api';
+import { patientsApi, AuditSummary, AuditSessionStatus, ResetResponse } from '@/lib/api';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,6 +41,8 @@ const ReporteIndividualPage = () => {
   const [exporting, setExporting] = useState<'pdf' | 'excel' | 'html' | null>(null);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
+  const [reanalyzingStatus, setReanalyzingStatus] = useState('');
 
   useEffect(() => {
     if (id) {
@@ -77,17 +79,56 @@ const ReporteIndividualPage = () => {
 
   const fetchAuditData = fetchReportData;
 
+  const pollUntilDone = async () => {
+    setIsReanalyzing(true);
+    const maxAttempts = 60;
+    let attempts = 0;
+    const statusLabels: Record<string, string> = {
+      cargando: 'Cargando PDF...',
+      anonimizando: 'Anonimizando...',
+      extrayendo: 'Extrayendo variables...',
+      analizando: 'Analizando hallazgos...',
+      listo: 'Completado',
+      error: 'Error en el análisis',
+    };
+    while (attempts < maxAttempts) {
+      await new Promise(r => setTimeout(r, 3000));
+      attempts++;
+      try {
+        const sessionData = await patientsApi.getSession(id!);
+        setSession(sessionData);
+        setReanalyzingStatus(statusLabels[sessionData.status] ?? sessionData.status);
+        if (sessionData.status === 'listo' || sessionData.status === 'error') {
+          if (sessionData.status === 'listo') {
+            await fetchReportData();
+            toast.success('Re-análisis completado. Hallazgos actualizados.');
+          } else {
+            toast.error('Error durante el re-análisis. Revisa los logs del backend.');
+          }
+          break;
+        }
+      } catch {}
+    }
+    setIsReanalyzing(false);
+    setReanalyzingStatus('');
+  };
+
   const handleResetSession = async () => {
     if (!id) return;
     try {
       setResetting(true);
-      await patientsApi.resetSession(id);
-      toast.success('Auditoría reiniciada. Por favor re-sube el PDF para volver a procesar.');
+      const result: ResetResponse = await patientsApi.resetSession(id);
       setShowResumeModal(false);
-      navigate('/app');
+      setResetting(false);
+      if (result.relaunched) {
+        toast.success('Re-análisis iniciado. Los resultados se actualizarán automáticamente.');
+        pollUntilDone();
+      } else {
+        toast.info('Archivo PDF no encontrado en disco. Carga el PDF nuevamente para re-analizar.');
+        navigate('/app');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Error al reiniciar la sesión');
-    } finally {
       setResetting(false);
     }
   };
@@ -302,6 +343,17 @@ const ReporteIndividualPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Banner de re-análisis en progreso */}
+      {isReanalyzing && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-3 flex items-center gap-3">
+          <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full shrink-0" />
+          <span className="text-sm text-blue-800 font-medium">
+            Re-análisis en curso: {reanalyzingStatus || 'Procesando...'}
+          </span>
+          <span className="text-xs text-blue-600 ml-auto">Los hallazgos se actualizarán automáticamente al finalizar.</span>
+        </div>
+      )}
 
       {/* Header */}
       <div className="bg-white border-b">

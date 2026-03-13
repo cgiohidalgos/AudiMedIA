@@ -195,6 +195,11 @@ export interface AuditSessionStatus {
   tiene_progreso_previo: boolean;
 }
 
+export interface ResetResponse {
+  relaunched: boolean;
+  message: string;
+}
+
 export const patientsApi = {
   list: () => request<PatientSummary[]>('/patients/'),
 
@@ -208,7 +213,7 @@ export const patientsApi = {
     request<AuditSessionStatus>(`/patients/${id}/session`),
 
   resetSession: (id: string) =>
-    request<void>(`/patients/${id}/session/reset`, { method: 'POST' }),
+    request<ResetResponse>(`/patients/${id}/session/reset`, { method: 'POST' }),
 
   controlBoard: (filters?: { risk_level?: string; audit_status?: string }) => {
     const params = new URLSearchParams();

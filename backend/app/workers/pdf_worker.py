@@ -149,7 +149,7 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                 patient = res.scalar_one_or_none()
 
             if not patient:
-                # crear nuevo paciente
+                # crear nuevo paciente (totales se acumularán tras deduplicación)
                 patient = PatientCase(
                     id=str(uuid.uuid4()),
                     historia_numero=history_num,
@@ -170,9 +170,9 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                     procedimientos=clinical_data.get("procedimientos", []),
                     evoluciones=clinical_data.get("evoluciones", []),
                     riesgo_auditoria=summary["riesgo_global"],
-                    total_hallazgos=summary["total_hallazgos"],
-                    exposicion_glosas=summary["exposicion_glosas_cop"],
-                    audit_status="completed",
+                    total_hallazgos=0,
+                    exposicion_glosas=0.0,
+                    audit_status="pending",
                 )
                 db.add(patient)
                 await db.flush()
@@ -194,10 +194,7 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                 patient.estudios_solicitados = clinical_data.get("estudios_solicitados", patient.estudios_solicitados)
                 patient.procedimientos = clinical_data.get("procedimientos", patient.procedimientos)
                 patient.evoluciones = clinical_data.get("evoluciones", patient.evoluciones)
-                # actualizar campos de auditoría acumulados
-                patient.riesgo_auditoria = summary["riesgo_global"]
-                patient.total_hallazgos = (patient.total_hallazgos or 0) + summary["total_hallazgos"]
-                patient.exposicion_glosas = (patient.exposicion_glosas or 0.0) + summary["exposicion_glosas_cop"]
+                # Los totales (total_hallazgos, exposicion_glosas) se acumulan tras la deduplicación
 
             # registrar hallazgos nuevos y evitar duplicados
             # marcar todos los hallazgos previos como heredados antes de procesar
@@ -247,10 +244,11 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
             # recompute resumen solo para hallazgos nuevos (para sumar totales)
             new_summary = generate_audit_summary(new_findings, clinical_data) if new_findings else {"riesgo_global": summary["riesgo_global"], "total_hallazgos": 0, "exposicion_glosas_cop": 0.0}
 
-            # actualizar paciente acumulativos
+            # actualizar paciente acumulativos (solo hallazgos NUEVOS, evita doble-conteo)
             patient.riesgo_auditoria = summary["riesgo_global"]
             patient.total_hallazgos = (patient.total_hallazgos or 0) + new_summary["total_hallazgos"]
             patient.exposicion_glosas = (patient.exposicion_glosas or 0.0) + new_summary["exposicion_glosas_cop"]
+            patient.audit_status = "completed"
 
             # actualizar sesión
             session.patient_id = patient.id
@@ -265,11 +263,6 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
             await db.commit()
             logger.info(f"✅ Procesamiento completado para {label} (paciente {patient.id})")
             logger.info(f"📄 {total_pages} páginas reconocidas, {len(new_findings)} hallazgos nuevos")
-
-    except Exception as e:
-        logger.error(f"❌ ERROR procesando PDF (session={session_id}): {type(e).__name__}: {str(e)}")
-        logger.exception("Traceback completo:")
-        await _update_status(session_id, DocumentStatus.error)  # type: ignore
 
     except Exception as e:
         logger.error(f"❌ ERROR procesando PDF (session={session_id}): {type(e).__name__}: {str(e)}")
