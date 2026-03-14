@@ -10,13 +10,19 @@ from app.db.seed import seed_default_users
 
 # Configurar logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.DEBUG if settings.DEBUG else logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-# Silenciar libs muy verbosas
-for _noisy in ('httpx', 'httpcore', 'openai._base_client', 'multipart'):
+# Silenciar libs muy verbosas, excepto cuando estamos en modo DEBUG
+for _noisy in ('httpx', 'httpcore', 'multipart'):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
+
+# Cuando se activa DEBUG, también queremos ver los logs HTTP del cliente OpenAI
+if settings.DEBUG:
+    logging.getLogger('openai._base_client').setLevel(logging.DEBUG)
+else:
+    logging.getLogger('openai._base_client').setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 

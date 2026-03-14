@@ -75,7 +75,7 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
       setFiles(prev => prev.map((f, i) => ({
         ...f,
         status: (responses[i]?.status ?? 'cargando') as FileStatus,
-        progress: responses[i]?.status === 'listo' ? 100 : 20,
+        progress: responses[i]?.progress ?? (responses[i]?.status === 'listo' ? 100 : 20),
       })));
 
       // Polling de estado cada 2 segundos hasta que todos estén listos o error
@@ -92,8 +92,12 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
         attempts++;
 
         const statuses = await Promise.all(
-          sessionIds.map(id => uploadApi.getStatus(id).catch(() => null))
+          sessionIds.map(id => uploadApi.getStatus(id).catch((e) => {
+            console.error('getStatus failed', e);
+            return null;
+          }))
         );
+        console.debug('status polling results:', statuses);
 
         setFiles(prev => prev.map((f, i) => {
           const s = statuses[i];
@@ -101,7 +105,7 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
           return {
             ...f,
             status: s.status as FileStatus,
-            progress: stepProgress[s.status] ?? f.progress,
+            progress: s.progress ?? stepProgress[s.status] ?? f.progress,
           };
         }));
 
@@ -185,10 +189,10 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
                         className={`h-full rounded-full transition-all duration-300 ${
                           file.status === 'listo' ? 'bg-success' : file.status === 'error' ? 'bg-destructive' : 'bg-foreground'
                         }`}
-                        style={{ width: `${file.progress}%` }}
-                      />
-                    </div>
-                    <span className="progress-step shrink-0">{statusLabels[file.status]}</span>
+                          style={{ width: `${Math.max(1, Math.min(100, file.progress))}%` }}
+                        />
+                      </div>
+                      <span className="progress-step shrink-0">{statusLabels[file.status]} ({Math.round(file.progress)}%)</span>
                   </div>
                 </div>
                 {!processing && (

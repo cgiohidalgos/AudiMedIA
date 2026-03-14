@@ -38,7 +38,15 @@ class Settings(BaseSettings):
 
     # LLM
     OPENAI_API_KEY: str = ""
-    LLM_MODEL: str = "gpt-4o"
+    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_MAX_TOKENS: int = 1200
+
+    # Si el texto es muy grande, se crea un resumen más pequeño antes de extraer variables.
+    # Esto reduce el uso de tokens al procesar PDFs muy largos.
+    LLM_USE_SUMMARIZATION: bool = True
+    LLM_SUMMARIZE_THRESHOLD_CHARS: int = 100_000
+    LLM_SUMMARIZE_CHUNK_SIZE: int = 12_000
+    LLM_SUMMARIZE_MAX_TOKENS: int = 800
 
     # Almacenamiento de PDFs
     UPLOAD_DIR: str = "/tmp/audiomedia/uploads"

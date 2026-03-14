@@ -1,3 +1,23 @@
+def filter_irrelevant_pages(pages):
+    """Filtra páginas irrelevantes: muy cortas, solo firmas, anexos, etc."""
+    import re
+    keywords = [
+        "firma", "anexo", "confidencial", "página en blanco", "no contiene información clínica",
+        "autorizo", "consiento", "privacidad", "tabla de firmas", "autorización", "consentimiento"
+    ]
+    filtered = []
+    for page in pages:
+        text = page.text.strip().lower()
+        # Descarta si es muy corta
+        if len(text) < 100:
+            # Si contiene alguna palabra clave irrelevante, descarta
+            if any(k in text for k in keywords):
+                continue
+            # Si solo tiene números/símbolos
+            if not re.search(r"[a-záéíóúñ]", text):
+                continue
+        filtered.append(page)
+    return filtered
 """
 Worker de procesamiento de PDFs.
 Pipeline: validar → extraer texto → OCR → anonimizar → extraer variables → auditar → guardar.
@@ -54,11 +74,13 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
     a un paciente, sólo se vuelven a procesar las páginas que aún no se habían
     auditado y los hallazgos se agregan al registro existente.
     """
+    logger.info(f"▶️ process_pdf_task invoked: session={session_id} pdf_path={pdf_path} label={label}")
     try:
         # 1. EXTRAER TEXTO
         logger.info(f"📄 [WORKER] Paso 1: Extrayendo texto de PDF...")
         await _update_status(session_id, DocumentStatus.extrayendo)  # type: ignore
         pages = extract_text_from_pdf(pdf_path)
+        pages = filter_irrelevant_pages(pages)
         total_pages = get_total_pages(pdf_path)
         logger.info(f"📄 [WORKER] Extraídas {len(pages)} páginas de texto. Total páginas conocidas: {total_pages}")
 
@@ -94,6 +116,11 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
                 logger.error(f"❌ Sesión {session_id} no encontrada")
                 return
 
+            # Guardar el total de páginas para que el frontend pueda calcular porcentaje
+            if session_row.total_paginas_conocidas != total_pages:
+                session_row.total_paginas_conocidas = total_pages
+                await db.commit()
+
             # si hay paciente vinculado y ya procesó todas las páginas
             if session_row.patient_id and (session_row.ultima_pagina_auditada or 0) >= total_pages:
                 session_row.status = DocumentStatus.listo.value
@@ -107,6 +134,7 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
 
         # decidir rango a procesar
         pages_to_analyze = extract_text_from_pdf(pdf_path, start_page)
+        pages_to_analyze = filter_irrelevant_pages(pages_to_analyze)
         if not pages_to_analyze:
             # nada nuevo — actualizar estado con una sesión fresca
             async with AsyncSessionLocal() as db:

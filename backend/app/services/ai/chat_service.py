@@ -4,11 +4,39 @@ Servicio de chat con historia clínica usando RAG básico.
 import json
 import logging
 from openai import AsyncOpenAI
+import asyncio
+import random
 from app.core.config import settings
 from app.schemas.audit import ChatResponse, ChatReference
 
 logger = logging.getLogger(__name__)
+
 client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+# Retry utilitario para llamadas a OpenAI
+async def retry_with_backoff(func, *args, max_retries=5, base_delay=2, max_delay=32, **kwargs):
+    for attempt in range(1, max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            # Manejar solo errores 429 o de red/transitorios
+            if hasattr(e, 'status_code') and e.status_code == 429:
+                wait = min(base_delay * 2 ** (attempt - 1), max_delay)
+                wait = wait * (0.8 + 0.4 * random.random())  # Jitter
+                logger.warning(f"⏳ Límite de tasa alcanzado (429). Reintentando en {wait:.1f}s (intento {attempt}/{max_retries})...")
+                await asyncio.sleep(wait)
+            elif 'rate limit' in str(e).lower() or '429' in str(e):
+                wait = min(base_delay * 2 ** (attempt - 1), max_delay)
+                wait = wait * (0.8 + 0.4 * random.random())
+                logger.warning(f"⏳ Rate limit detectado. Reintentando en {wait:.1f}s (intento {attempt}/{max_retries})...")
+                await asyncio.sleep(wait)
+            elif attempt == max_retries:
+                logger.error(f"❌ Error persistente tras {max_retries} reintentos: {type(e).__name__}: {str(e)}")
+                raise
+            else:
+                logger.warning(f"⚠️ Error transitorio: {type(e).__name__}: {str(e)}. Reintentando...")
+                await asyncio.sleep(2)
+    raise RuntimeError("No se pudo completar la llamada tras varios reintentos")
 
 SYSTEM_PROMPT = """Eres un asistente de auditoría médica colombiana experto en:
 - Normativa: Ley 1438/2011, Decreto 780/2016, Resolución 1995/1999
@@ -64,17 +92,17 @@ DATOS COMPLETOS:
     logger.info(f"🔍 Chat - Contexto incluye: {len(patient.medicamentos or [])} meds, {len(patient.evoluciones or [])} evoluciones")
     
     try:
-        response = await client.chat.completions.create(
-            model=settings.LLM_MODEL,
-            messages=messages,
-            temperature=0.7,  # Mayor temperatura para respuestas más variadas
-            max_tokens=500,
-        )
-        
+        async def call():
+            return await client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                messages=messages,
+                temperature=0.7,  # Mayor temperatura para respuestas más variadas
+                max_tokens=500,
+            )
+        response = await retry_with_backoff(call)
         answer = response.choices[0].message.content
         logger.info(f"✅ Respuesta generada ({len(answer)} chars): {answer[:150]}...")
         logger.info(f"🎯 Tokens usados: prompt={response.usage.prompt_tokens}, completion={response.usage.completion_tokens}, total={response.usage.total_tokens}")
-        
     except Exception as e:
         logger.error(f"❌ ERROR en chat: {type(e).__name__}: {str(e)}")
         logger.exception("Traceback completo:")
@@ -120,12 +148,14 @@ async def answer_question_multi(patients: list, question: str) -> ChatResponse:
     ]
 
     try:
-        response = await client.chat.completions.create(
-            model=settings.LLM_MODEL,
-            messages=messages,
-            temperature=0.4,
-            max_tokens=700,
-        )
+        async def call():
+            return await client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                messages=messages,
+                temperature=0.4,
+                max_tokens=700,
+            )
+        response = await retry_with_backoff(call)
         answer = response.choices[0].message.content
         logger.info(f"💬 Multi-chat respondido para {len(patients)} pacientes")
     except Exception as e:
