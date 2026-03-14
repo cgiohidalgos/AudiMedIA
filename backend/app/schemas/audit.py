@@ -52,6 +52,7 @@ class UploadResponse(BaseModel):
     session_id: str
     status: str
     message: str
+    progress: float = 0.0
 
 
 class ChatRequest(BaseModel):

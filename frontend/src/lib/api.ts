@@ -87,6 +87,7 @@ export interface UploadResponse {
   session_id: string;
   status: DocumentStatus;
   message: string;
+  progress: number;
 }
 
 export const uploadApi = {

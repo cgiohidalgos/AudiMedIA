@@ -92,6 +92,7 @@ async def upload_pdfs(
             session_id=session_id,
             status=DocumentStatus.cargando.value,
             message=f"'{file.filename}' cargado como {label}. Procesando...",
+            progress=0.0,
         ))
 
     logger.info("[upload] respuestas enviadas: %d", len(responses))
@@ -109,8 +110,28 @@ async def get_upload_status(
     if not session:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
+    total = session.total_paginas_conocidas or 0
+    done = session.ultima_pagina_auditada or 0
+    progress = 0.0
+    if total > 0:
+        progress = min(100.0, max(0.0, (done / total) * 100))
+
+    # Fallback por estado (para casos donde no hay páginas conocidas aún)
+    if total == 0:
+        status_map = {
+            DocumentStatus.cargando.value: 5,
+            DocumentStatus.anonimizando.value: 25,
+            DocumentStatus.extrayendo.value: 50,
+            DocumentStatus.analizando.value: 75,
+            DocumentStatus.listo.value: 100,
+            DocumentStatus.error.value: 100,
+        }
+        progress = status_map.get(session.status, 0)
+
+    logger.info("[upload/status] session=%s status=%s progress=%.1f", session.id, session.status, progress)
     return UploadResponse(
         session_id=session.id,
         status=session.status,
         message=f"Estado: {session.status}",
+        progress=progress,
     )
