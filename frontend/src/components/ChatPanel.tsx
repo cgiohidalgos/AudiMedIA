@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Send, Loader2, MessageSquare, Users } from 'lucide-react';
+import { X, Send, Loader2, MessageSquare, Users, FileText } from 'lucide-react';
 import { chatApi } from '@/lib/api';
 
 interface ChatPanelProps {
@@ -7,6 +7,8 @@ interface ChatPanelProps {
   patientLabel: string;
   allPatientIds?: string[];
   onClose: () => void;
+  /** Callback invocado al hacer click en una referencia de página. Abre el visor en esa página. */
+  onViewPage?: (page: number) => void;
 }
 
 interface ChatMessageLocal {
@@ -23,7 +25,7 @@ const suggestions = [
   '¿Cuál es el riesgo de glosa?',
 ];
 
-const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose }: ChatPanelProps) => {
+const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage }: ChatPanelProps) => {
   const [messages, setMessages] = useState<ChatMessageLocal[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -180,13 +182,25 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose }: ChatPane
               {m.role === 'assistant' && m.referencias && m.referencias.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {[...new Set(m.referencias.map(r => r.pagina))].sort((a, b) => a - b).map(page => (
-                    <span
-                      key={page}
-                      className="text-xs bg-blue-100 text-blue-700 rounded px-2 py-0.5 font-medium font-body"
-                      title={`Referencia a página ${page}`}
-                    >
-                      pág. {page}
-                    </span>
+                    onViewPage ? (
+                      <button
+                        key={page}
+                        onClick={() => onViewPage(page)}
+                        className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 rounded px-2 py-0.5 font-medium font-body flex items-center gap-1 transition-colors"
+                        title={`Ver página ${page} en el documento`}
+                      >
+                        <FileText className="h-2.5 w-2.5" />
+                        pág. {page}
+                      </button>
+                    ) : (
+                      <span
+                        key={page}
+                        className="text-xs bg-blue-100 text-blue-700 rounded px-2 py-0.5 font-medium font-body"
+                        title={`Referencia a página ${page}`}
+                      >
+                        pág. {page}
+                      </span>
+                    )
                   ))}
                 </div>
               )}
