@@ -157,18 +157,44 @@ async def extract_clinical_variables(text: str, progress_callback: Optional[Call
         logger.info(f"🔑 API Key configurada: {settings.OPENAI_API_KEY[:20]}...")
         logger.info(f"🤖 Modelo: {settings.LLM_MODEL}")
 
-        def _chunk_text(s: str, max_len: int) -> list[str]:
-            result: list[str] = []
-            start = 0
-            while start < len(s):
-                end = min(start + max_len, len(s))
-                if end < len(s):
-                    nl = s.rfind("\n", start, end)
-                    if nl > start:
-                        end = nl
-                result.append(s[start:end])
-                start = end
-            return result
+        # Fragmentos grandes para minimizar el número de llamadas a la API
+        max_chunk = 30000
+        chunks = []
+        start = 0
+        while start < len(text):
+            end = min(start + max_chunk, len(text))
+            if end < len(text):
+                nl = text.rfind("\n", start, end)
+                if nl > start:
+                    end = nl
+            chunks.append(text[start:end])
+            start = end
+        logger.info(f"🔍 Texto dividido en {len(chunks)} fragmento(s) para extracción (paralelo)")
+
+        async def _call_chunk(chunk: str, idx: int) -> dict:
+            logger.info(f"🔍 Fragmento {idx}/{len(chunks)} iniciando (size {len(chunk)})")
+            try:
+                response = await client.chat.completions.create(
+                    model=settings.LLM_MODEL,
+                    messages=[
+                        {"role": "system", "content": "Eres un auditor médico experto en normativa colombiana (CIE10, CUPS, Ley 1438)."},
+                        {"role": "user", "content": EXTRACTION_PROMPT.format(text=chunk)},
+                    ],
+                    temperature=0,
+                    response_format={"type": "json_object"},
+                )
+                result = json.loads(response.choices[0].message.content)
+                logger.info(f"  ✅ Fragmento {idx} completado exitosamente")
+                return result
+            except json.JSONDecodeError as e:
+                logger.error(f"  ❌ Fragmento {idx} - Error JSON: {e}")
+                logger.error(f"  📜 Respuesta malformada: {response.choices[0].message.content[:200]}...")
+                return {"error": f"JSON malformado en fragmento {idx}: {str(e)}"}
+            except Exception as e:
+                logger.error(f"  ❌ Fragmento {idx} - Error OpenAI: {type(e).__name__}: {str(e)}")
+                if hasattr(e, 'response'):
+                    logger.error(f"  📜 Respuesta HTTP: {getattr(e.response, 'status_code', 'N/A')}")
+                return {"error": f"Error en fragmento {idx}: {str(e)}"}
 
         # Si el texto es muy grande, primero resumir para gastar menos tokens.
         text_to_process = text
@@ -322,6 +348,9 @@ async def extract_clinical_variables(text: str, progress_callback: Optional[Call
         return combined
 
     except Exception as e:
-        logger.error(f"❌ ERROR en extracción de variables: {type(e).__name__}: {str(e)}")
+        logger.error(f"❌ ERROR GLOBAL en extracción de variables: {type(e).__name__}: {str(e)}")
+        if 'RateLimitError' in str(type(e)) or 'insufficient_quota' in str(e).lower():
+            logger.error(f"💰 PROBLEMA DE CUOTA: La API key no tiene créditos suficientes")
+            logger.error(f"💰 Solución: Recarga créditos en platform.openai.com/settings/billing")
         logger.exception("Traceback completo:")
         return {"error": str(e)}

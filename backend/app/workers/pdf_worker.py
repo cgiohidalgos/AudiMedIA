@@ -77,11 +77,12 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
     logger.info(f"▶️ process_pdf_task invoked: session={session_id} pdf_path={pdf_path} label={label}")
     try:
         # 1. EXTRAER TEXTO
+        logger.info(f"📄 [WORKER] Paso 1: Extrayendo texto de PDF...")
         await _update_status(session_id, DocumentStatus.extrayendo)  # type: ignore
         pages = extract_text_from_pdf(pdf_path)
         pages = filter_irrelevant_pages(pages)
         total_pages = get_total_pages(pdf_path)
-        logger.info(f"📄 Texto extraído: páginas_raw={len(pages)} total_paginas_detectadas={total_pages}")
+        logger.info(f"📄 [WORKER] Extraídas {len(pages)} páginas de texto. Total páginas conocidas: {total_pages}")
 
         # extraer número de historia (antes de anonimizar) para identificación
         def _extract_history_number(page_list):
@@ -95,8 +96,10 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
         history_num = _extract_history_number(pages)
 
         # 2. ANONIMIZAR (hace falta para extracción IA)
+        logger.info(f"🔒 [WORKER] Paso 2: Anonimizando contenido...")
         await _update_status(session_id, DocumentStatus.anonimizando)
         pages_anon = anonymize_pages(pages)
+        logger.info(f"🔒 [WORKER] Anonimización completada para {len(pages_anon)} páginas")
 
         # función auxiliar para concatenar texto de páginas
         def _pages_to_text(p_list):
@@ -149,42 +152,16 @@ async def process_pdf_task(session_id: str, pdf_path: str, label: str):
         text_new = _pages_to_text(anon_to_analyze)
 
         # 4. EXTRAER VARIABLES (sobre TODO el texto para actualizar metadata)
+        logger.info(f"🤖 [WORKER] Paso 4: Extracción de variables con IA...")
         await _update_status(session_id, DocumentStatus.analizando)
         full_anon_text = _pages_to_text(pages_anon)
-        if not full_anon_text.strip() and pages_to_analyze:
-            # Si la versión filtrada/anónima quedó vacía, intentar con las páginas que sí se analizaron
-            logger.warning("⚠️ full_anon_text está vacío; usando texto de pages_to_analyze para extracción")
-            full_anon_text = _pages_to_text(pages_to_analyze)
-
-        if full_anon_text:
-            last_page = pages_anon[-1] if pages_anon else pages_to_analyze[-1]
-            logger.info(f"📝 Última página extraída (n°{last_page.page_number}):\n{last_page.text[:1000]}{'...' if len(last_page.text) > 1000 else ''}")
-        else:
-            logger.warning("⚠️ No se extrajo texto útil de PDF; se intentará procesar de todas formas.")
-
-        # callback para actualizar progreso de páginas mientras se extraen variables
-        async def _progress_callback(progress: float):
-            """Actualiza el campo ultima_pagina_auditada según el avance estimado."""
-            try:
-                # estimación basada en porcentaje del total de páginas
-                pct = max(0.0, min(1.0, progress))
-                estimated_page = int(total_pages * pct)
-                async with AsyncSessionLocal() as db:
-                    result = await db.execute(
-                        select(AuditSession).where(AuditSession.id == session_id)
-                    )
-                    s = result.scalar_one_or_none()
-                    if s and estimated_page > (s.ultima_pagina_auditada or 0):
-                        s.ultima_pagina_auditada = min(estimated_page, total_pages)
-                        await db.commit()
-            except Exception as e:
-                logger.warning(f"⚠️ progress_callback fallo: {e}")
-
-        clinical_data = await extract_clinical_variables(full_anon_text, progress_callback=_progress_callback)
+        logger.info(f"🤖 [WORKER] Texto preparado para IA: {len(full_anon_text)} caracteres")
+        clinical_data = await extract_clinical_variables(full_anon_text)
         if "error" in clinical_data:
-            logger.error(f"❌ Error en extracción de variables: {clinical_data['error']}")
+            logger.error(f"❌ [WORKER] Error en extracción de variables: {clinical_data['error']}")
             raise Exception(f"Error extrayendo variables: {clinical_data['error']}")
-        logger.info(f"✅ Variables extraídas correctamente para {label}")
+        logger.info(f"✅ [WORKER] Variables extraídas correctamente para {label}")
+        logger.debug(f"🔍 [WORKER] Variables extraídas: {list(clinical_data.keys())}")
 
         # Ejecutar módulos sobre el conjunto completo de datos (filtraremos duplicados luego)
         findings: list[Finding] = run_all_modules(clinical_data)

@@ -3,7 +3,7 @@
  * Lee el token JWT de localStorage y lo adjunta a cada petición.
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8002/api/v1';
 
 const TOKEN_KEY = 'audiomedia_token';
 
