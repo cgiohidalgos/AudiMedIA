@@ -1,9 +1,13 @@
 /**
  * Cliente HTTP centralizado para el backend FastAPI.
  * Lee el token JWT de localStorage y lo adjunta a cada petición.
+ *
+ * Características:
+ * - Retry automático con backoff exponencial (solo errores de red / 5xx)
+ * - Límite de concurrencia: máximo MAX_CONCURRENT peticiones simultáneas
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8002/api/v1';
+const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 
 const TOKEN_KEY = 'audiomedia_token';
 
@@ -19,6 +23,63 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+// ─── Concurrency limiter ─────────────────────────────────────────────────────
+
+const MAX_CONCURRENT = 6;
+let _active = 0;
+const _queue: Array<() => void> = [];
+
+function acquireSlot(): Promise<void> {
+  return new Promise(resolve => {
+    if (_active < MAX_CONCURRENT) {
+      _active++;
+      resolve();
+    } else {
+      _queue.push(() => { _active++; resolve(); });
+    }
+  });
+}
+
+function releaseSlot() {
+  _active--;
+  if (_queue.length > 0) {
+    const next = _queue.shift()!;
+    next();
+  }
+}
+
+// ─── Fetch with retry ────────────────────────────────────────────────────────
+
+const RETRY_COUNT = 3;
+const RETRY_BASE_MS = 500;
+
+function isRetryable(error: unknown, status?: number): boolean {
+  if (status !== undefined) return status >= 500;
+  // Network failures (TypeError: Failed to fetch) are retryable
+  return error instanceof TypeError;
+}
+
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= RETRY_COUNT; attempt++) {
+    if (attempt > 0) {
+      const delay = RETRY_BASE_MS * 2 ** (attempt - 1) + Math.random() * 100;
+      await new Promise(r => setTimeout(r, delay));
+    }
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || !isRetryable(null, res.status)) return res;
+      lastError = new ApiError(res.status, `HTTP ${res.status}`);
+    } catch (err) {
+      lastError = err;
+      if (!isRetryable(err)) throw err;
+    }
+  }
+  throw lastError;
+}
+
+// ─── Core request ────────────────────────────────────────────────────────────
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -27,16 +88,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
+  await acquireSlot();
+  try {
+    const res = await fetchWithRetry(`${BASE_URL}${path}`, { ...init, headers });
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.detail ?? 'Error desconocido');
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, body.detail ?? 'Error desconocido');
+    }
+
+    // 204 No Content
+    if (res.status === 204) return undefined as T;
+    return res.json() as Promise<T>;
+  } finally {
+    releaseSlot();
   }
-
-  // 204 No Content
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
 }
 
 export class ApiError extends Error {
@@ -81,7 +147,8 @@ export const authApi = {
 // ─── Upload ─────────────────────────────────────────────────────────────────
 
 export type DocumentStatus =
-  | 'cargando' | 'anonimizando' | 'extrayendo' | 'analizando' | 'listo' | 'error';
+  | 'cargando' | 'subido' | 'extrayendo' | 'extraido'
+  | 'anonimizando' | 'analizando' | 'listo' | 'error';
 
 export interface UploadResponse {
   session_id: string;
@@ -110,6 +177,16 @@ export const uploadApi = {
 
   getStatus: (sessionId: string) =>
     request<UploadResponse>(`/upload/status/${sessionId}`),
+};
+
+// ─── Processing (etapas 2 y 3) ────────────────────────────────────────────────────────
+
+export const processingApi = {
+  extract: (sessionId: string) =>
+    request<UploadResponse>(`/processing/${sessionId}/extract`, { method: 'POST' }),
+
+  process: (sessionId: string) =>
+    request<UploadResponse>(`/processing/${sessionId}/process`, { method: 'POST' }),
 };
 
 // ─── Pacientes ───────────────────────────────────────────────────────────────

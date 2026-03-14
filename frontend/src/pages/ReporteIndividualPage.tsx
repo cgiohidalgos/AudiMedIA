@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { patientsApi, AuditSummary, AuditSessionStatus, ResetResponse } from '@/lib/api';
 import { toast } from 'sonner';
 import AppNavbar from '@/components/AppNavbar';
+import PDFViewer from '@/components/PDFViewer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +32,8 @@ import {
   RotateCcw,
   PlayCircle,
   BookOpen,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 const ReporteIndividualPage = () => {
@@ -44,6 +47,7 @@ const ReporteIndividualPage = () => {
   const [resetting, setResetting] = useState(false);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [reanalyzingStatus, setReanalyzingStatus] = useState('');
+  const [showPdfViewer, setShowPdfViewer] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -271,7 +275,7 @@ const ReporteIndividualPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={showPdfViewer ? 'h-screen flex flex-col bg-gray-50 overflow-hidden' : 'min-h-screen bg-gray-50'}>
 
       {/* Modal: Sesión de auditoría previa detectada */}
       <Dialog open={showResumeModal} onOpenChange={setShowResumeModal}>
@@ -361,6 +365,18 @@ const ReporteIndividualPage = () => {
         title="Reporte de Auditoría"
         extraActions={
           <div className="flex gap-2">
+            <Button
+              variant={showPdfViewer ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowPdfViewer((v) => !v)}
+            >
+              {showPdfViewer ? (
+                <EyeOff className="mr-1 h-3.5 w-3.5" />
+              ) : (
+                <Eye className="mr-1 h-3.5 w-3.5" />
+              )}
+              {showPdfViewer ? 'Ocultar PDF' : 'Ver historia clínica'}
+            </Button>
             <Button variant="outline" size="sm" onClick={handleExportHtml} disabled={exporting !== null}>
               {exporting === 'html' ? (
                 <div className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full mr-1" />
@@ -389,7 +405,9 @@ const ReporteIndividualPage = () => {
         }
       />
 
-      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+      <div className={showPdfViewer ? 'flex flex-1 overflow-hidden' : ''}>
+        <div className={showPdfViewer ? 'flex-1 overflow-y-auto' : ''}>
+        <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
 
         {/* Banner de progreso de sesión */}
         {session && (
@@ -575,6 +593,19 @@ const ReporteIndividualPage = () => {
           </CardContent>
         </Card>
       </div>
+        </div>{/* end scroll wrapper */}
+
+        {/* Visor de PDF integrado */}
+        {showPdfViewer && audit && (
+          <div className="w-[520px] shrink-0 border-l border-border h-full">
+            <PDFViewer
+              patientId={id!}
+              patientLabel={audit.paciente.label}
+              onClose={() => setShowPdfViewer(false)}
+            />
+          </div>
+        )}
+      </div>{/* end flex row */}
     </div>
   );
 };

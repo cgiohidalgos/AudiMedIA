@@ -78,7 +78,7 @@ const DashboardPage = () => {
       }
       
       // Fetch financiero
-      const finRes = await fetch(`http://localhost:8000/api/v1/dashboard/financiero?periodo=${periodo}`, {
+      const finRes = await fetch(`/api/v1/dashboard/financiero?periodo=${periodo}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -91,7 +91,7 @@ const DashboardPage = () => {
       
       // Fetch gráficos
       const dias = periodo === 'dia' ? 7 : periodo === 'semana' ? 14 : periodo === 'mes' ? 30 : 90;
-      const grafRes = await fetch(`http://localhost:8000/api/v1/dashboard/graficos?dias=${dias}`, {
+      const grafRes = await fetch(`/api/v1/dashboard/graficos?dias=${dias}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -136,7 +136,7 @@ const DashboardPage = () => {
         incluir_detalle_pacientes: false,
       };
 
-      const response = await fetch('http://localhost:8000/api/v1/dashboard/export', {
+      const response = await fetch('/api/v1/dashboard/export', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

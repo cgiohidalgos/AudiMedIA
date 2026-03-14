@@ -16,9 +16,11 @@ class AuditModule(str, enum.Enum):
 
 class DocumentStatus(str, enum.Enum):
     cargando = "cargando"
+    subido = "subido"          # Etapa 1 completa: PDF guardado, sin procesar
+    extrayendo = "extrayendo"  # Etapa 2 en curso: extrayendo texto
+    extraido = "extraido"      # Etapa 2 completa: chunks guardados en BD
     anonimizando = "anonimizando"
-    extrayendo = "extrayendo"
-    analizando = "analizando"
+    analizando = "analizando"  # Etapa 3 en curso: IA procesando
     listo = "listo"
     error = "error"
 
@@ -45,6 +47,24 @@ class AuditSession(Base):
 
     patient = relationship("PatientCase", back_populates="audit_sessions")
     user = relationship("User", back_populates="audit_sessions")
+    chunks = relationship("DocumentChunk", back_populates="session", cascade="all, delete-orphan")
+
+
+class DocumentChunk(Base):
+    """Fragmento de texto extraído de un PDF. Unidad base para RAG."""
+    __tablename__ = "document_chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("auditoria_sesion.id"), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    word_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_ocr: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    session = relationship("AuditSession", back_populates="chunks")
 
 
 class AuditFinding(Base):

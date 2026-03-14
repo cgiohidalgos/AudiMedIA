@@ -1,6 +1,15 @@
 export type RiskLevel = 'ALTO' | 'MEDIO' | 'BAJO';
 
-export type FileStatus = 'idle' | 'cargando' | 'anonimizando' | 'extrayendo' | 'analizando' | 'listo' | 'error';
+export type FileStatus =
+  | 'idle'         // en cola, aún no subido
+  | 'cargando'     // subiendo al servidor
+  | 'subido'       // Etapa 1 completa: PDF guardado
+  | 'extrayendo'   // Etapa 2 en curso: extrayendo texto
+  | 'extraido'     // Etapa 2 completa: chunks guardados
+  | 'anonimizando'
+  | 'analizando'   // Etapa 3 en curso: IA procesando
+  | 'listo'        // Todo completado
+  | 'error';
 
 export interface UploadedFile {
   id: string;

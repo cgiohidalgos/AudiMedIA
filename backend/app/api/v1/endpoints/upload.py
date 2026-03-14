@@ -2,7 +2,7 @@ import os
 import uuid
 import hashlib
 import logging
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
@@ -13,7 +13,6 @@ from app.schemas.audit import UploadResponse
 from app.api.v1.deps import get_current_user, require_role
 from app.models.user import AppRole
 from app.core.config import settings
-from app.workers.pdf_worker import process_pdf_task
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/upload", tags=["upload"])
@@ -23,7 +22,6 @@ ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 @router.post("/", response_model=List[UploadResponse])
 async def upload_pdfs(
-    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(AppRole.admin, AppRole.auditor)),
@@ -92,21 +90,17 @@ async def upload_pdfs(
             user_id=current_user.id,
             pdf_hash=file_hash,
             pdf_path=file_path,
-            status=DocumentStatus.cargando.value,
+            status=DocumentStatus.subido.value,
         )
         db.add(session)
         await db.commit()
         await db.refresh(session)
         logger.info(f"✅ [UPLOAD] Sesión creada en BD exitosamente")
 
-        background_tasks.add_task(process_pdf_task, session_id, file_path, label)
-        logger.info(f"🚀 [UPLOAD] Worker encolado para session_id={session_id}, label={label}")
-
         responses.append(UploadResponse(
             session_id=session_id,
-            status=DocumentStatus.cargando.value,
-            message=f"'{file.filename}' cargado como {label}. Procesando...",
-            progress=0.0,
+            status=DocumentStatus.subido.value,
+            message=f"'{file.filename}' guardado. Listo para extracción de texto.",
         ))
 
     logger.info(f"📤 [UPLOAD] Procesamiento completado. Respuestas enviadas: {len(responses)}")

@@ -8,6 +8,11 @@ import AnalysisPane from '@/components/AnalysisPane';
 import ChatPanel from '@/components/ChatPanel';
 import ControlTable from '@/components/ControlTable';
 import AppNavbar from '@/components/AppNavbar';
+import PDFViewer from '@/components/PDFViewer';
+import {
+  Dialog,
+  DialogContent,
+} from '@/components/ui/dialog';
 import { patientsApi, type AuditSummary } from '@/lib/api';
 import { Loader2, ChevronDown, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -56,6 +61,8 @@ const AppPage = () => {
   const [toastMinimized, setToastMinimized] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [chatOpen, setChatOpen] = useState(false);
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
+  const [pdfViewerPage, setPdfViewerPage] = useState(1);
 
   // Fetch patients from API
   useEffect(() => {
@@ -352,9 +359,31 @@ const AppPage = () => {
             patientLabel={selectedPatient.label}
             allPatientIds={patients.map(p => p.id)}
             onClose={() => setChatOpen(false)}
+            onViewPage={(page) => {
+              setPdfViewerPage(page);
+              setPdfViewerOpen(true);
+            }}
           />
         )}
       </div>
+
+      {/* Visor PDF como modal al hacer click en referencia de página */}
+      {selectedPatient && (
+        <Dialog open={pdfViewerOpen} onOpenChange={setPdfViewerOpen}>
+          <DialogContent
+            className="max-w-4xl w-full h-[90vh] p-0 overflow-hidden flex flex-col"
+            aria-describedby={undefined}
+          >
+            <PDFViewer
+              patientId={selectedPatient.id}
+              patientLabel={selectedPatient.label}
+              initialPage={pdfViewerPage}
+              onClose={() => setPdfViewerOpen(false)}
+              className="flex-1"
+            />
+          </DialogContent>
+        </Dialog>
+      )}
       {(pollingForUpload || uploadError) && <ProcessingToast />}
     </div>
   );

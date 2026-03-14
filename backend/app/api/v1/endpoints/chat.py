@@ -53,9 +53,15 @@ async def chat_with_historia(
     try:
         response = await answer_question(patient, payload.question, history)
         logger.info("[chat] respuesta generada (%d refs)", len(response.referencias))
-    except Exception:
+    except Exception as exc:
         logger.exception("[chat] error al generar respuesta para paciente=%s", payload.patient_id)
-        raise
+        err = str(exc)
+        exc_name = type(exc).__name__
+        if "AuthenticationError" in exc_name or "invalid_api_key" in err or "Incorrect API key" in err:
+            raise HTTPException(status_code=503, detail="API key de OpenAI inválida o expirada. Actualiza OPENAI_API_KEY en backend/.env")
+        if "RateLimitError" in exc_name or "insufficient_quota" in err or "exceeded your current quota" in err:
+            raise HTTPException(status_code=402, detail="Cuenta de OpenAI sin créditos. Recarga saldo en platform.openai.com/settings/billing")
+        raise HTTPException(status_code=500, detail=f"Error al generar respuesta: {err}")
 
     assistant_msg = ChatMessage(
         id=str(uuid.uuid4()),
