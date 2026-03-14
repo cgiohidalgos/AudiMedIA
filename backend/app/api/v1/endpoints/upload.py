@@ -28,33 +28,44 @@ async def upload_pdfs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(AppRole.admin, AppRole.auditor)),
 ):
+    logger.info(f"🚀 [UPLOAD] NUEVO REQUEST DE UPLOAD")
+    logger.info(f"👤 [UPLOAD] Usuario: {current_user.email} ({current_user.role})")
+    logger.info(f"📁 [UPLOAD] Archivos recibidos: {len(files)}")
+    for i, file in enumerate(files):
+        logger.info(f"📁 [UPLOAD]   {i+1}. {file.filename} (content_type: {file.content_type})")
+    
     if len(files) > 5:
+        logger.warning(f"❌ [UPLOAD] Demasiados archivos: {len(files)} > 5")
         raise HTTPException(status_code=400, detail="Máximo 5 PDFs simultáneos")
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    logger.info(f"📂 [UPLOAD] Directorio upload verificado: {settings.UPLOAD_DIR}")
     responses = []
 
     for idx, file in enumerate(files):
-        logger.info("[upload] archivo recibido: %s (idx=%d)", file.filename, idx)
+        logger.info(f"📎 [UPLOAD] Archivo {idx+1}/{len(files)}: {file.filename}")
         if not file.filename.lower().endswith(".pdf"):
-            logger.warning("[upload] rechazado (no PDF): %s", file.filename)
+            logger.warning(f"❌ [UPLOAD] Rechazado (no PDF): {file.filename}")
             raise HTTPException(status_code=400, detail=f"{file.filename} no es un PDF válido")
 
         content = await file.read()
-        logger.debug("[upload] tamaño: %.1f KB", len(content) / 1024)
+        logger.info(f"📄 [UPLOAD] Tamaño leído: {len(content):,} bytes ({len(content)/1024:.1f} KB)")
         if len(content) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-            logger.warning("[upload] rechazado (tamaño): %s", file.filename)
+            logger.warning(f"❌ [UPLOAD] Rechazado (tamaño): {file.filename} - {len(content)/1024/1024:.1f}MB > {settings.MAX_UPLOAD_SIZE_MB}MB")
             raise HTTPException(status_code=413, detail=f"{file.filename} supera el tamaño máximo")
 
         file_hash = hashlib.sha256(content).hexdigest()
         file_path = os.path.join(settings.UPLOAD_DIR, f"{file_hash}.pdf")
-        logger.debug("[upload] hash: %s", file_hash)
+        logger.info(f"🔑 [UPLOAD] Hash calculado: {file_hash[:16]}...{file_hash[-4:]}")
+        logger.debug(f"💾 [UPLOAD] Ruta destino: {file_path}")
 
         with open(file_path, "wb") as f:
             f.write(content)
+        logger.info(f"💾 [UPLOAD] Archivo guardado exitosamente")
 
         # Verificar si es una re-carga (auditoría incremental)
         # Solo reutilizar si la sesión anterior terminó bien (listo/cargando/analizando)
+        logger.info(f"🔍 [UPLOAD] Verificando deduplicación por hash...")
         result = await db.execute(
             select(AuditSession).where(
                 AuditSession.pdf_hash == file_hash,
@@ -64,7 +75,7 @@ async def upload_pdfs(
         existing = result.scalar_one_or_none()
 
         if existing:
-            logger.info("[upload] documento ya existe, retornando sesión: %s", existing.id)
+            logger.info(f"♻️ [UPLOAD] Documento ya existe (sesión: {existing.id}, status: {existing.status})")
             responses.append(UploadResponse(
                 session_id=existing.id,
                 status=existing.status,
@@ -74,6 +85,8 @@ async def upload_pdfs(
 
         label = f"Historia {ALPHABET[idx % 26]}"
         session_id = str(uuid.uuid4())
+        logger.info(f"🆕 [UPLOAD] Creando nueva sesión: {session_id} con label: {label}")
+        
         session = AuditSession(
             id=session_id,
             user_id=current_user.id,
@@ -84,9 +97,10 @@ async def upload_pdfs(
         db.add(session)
         await db.commit()
         await db.refresh(session)
+        logger.info(f"✅ [UPLOAD] Sesión creada en BD exitosamente")
 
         background_tasks.add_task(process_pdf_task, session_id, file_path, label)
-        logger.info("[upload] tarea en cola: session_id=%s label=%s", session_id, label)
+        logger.info(f"🚀 [UPLOAD] Worker encolado para session_id={session_id}, label={label}")
 
         responses.append(UploadResponse(
             session_id=session_id,
@@ -94,7 +108,9 @@ async def upload_pdfs(
             message=f"'{file.filename}' cargado como {label}. Procesando...",
         ))
 
-    logger.info("[upload] respuestas enviadas: %d", len(responses))
+    logger.info(f"📤 [UPLOAD] Procesamiento completado. Respuestas enviadas: {len(responses)}")
+    for i, resp in enumerate(responses):
+        logger.info(f"📤 [UPLOAD] Respuesta {i+1}: session={resp.session_id}, status={resp.status}")
     return responses
 
 
