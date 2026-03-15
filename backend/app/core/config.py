@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_MAX_TOKENS: int = 1200
 
+    # Cohere RAG
+    COHERE_API_KEY: str = ""
+    COHERE_CHAT_MODEL: str = "command-r-08-2024"
+    COHERE_TOP_N: int = 8  # chunks a usar como contexto
+
+    # Proveedor para extracción de variables clínicas: "openai" o "cohere"
+    EXTRACTION_PROVIDER: str = "cohere"
+
     # Si el texto es muy grande, se crea un resumen más pequeño antes de extraer variables.
     # Esto reduce el uso de tokens al procesar PDFs muy largos.
     LLM_USE_SUMMARIZATION: bool = True
@@ -53,7 +61,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 50
 
     class Config:
-        env_file = ".env"
+        env_file = str(BACKEND_DIR / ".env")  # ruta absoluta, funciona sin importar el CWD
         case_sensitive = True
         extra = "ignore"  # Ignorar variables extra como VITE_*
 

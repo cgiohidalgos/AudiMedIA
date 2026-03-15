@@ -578,7 +578,7 @@ def analyze_estudios(patient_data: dict) -> List[Finding]:
         if not isinstance(estudio, dict):
             continue
         
-        nombre = estudio.get("nombre", "").lower()
+        nombre = (estudio.get("nombre") or "").lower()
         resultado_disponible = estudio.get("resultado_disponible", False)
         # Soportar tanto 'fecha_solicitud' (nombre esperado) como 'fecha' (nombre usado por el extractor)
         fecha_solicitud = estudio.get("fecha_solicitud") or estudio.get("fecha")  # Formato: YYYY-MM-DD o datetime
@@ -658,8 +658,8 @@ def analyze_estudios(patient_data: dict) -> List[Finding]:
         if not isinstance(estudio, dict):
             continue
         
-        nombre = estudio.get("nombre", "").lower()
-        indicacion = estudio.get("indicacion", "")
+        nombre = (estudio.get("nombre") or "").lower()
+        indicacion = estudio.get("indicacion") or ""
         
         if not indicacion or len(indicacion.strip()) < 10:
             # Buscar si el estudio requiere justificación especial
@@ -690,7 +690,7 @@ def analyze_estudios(patient_data: dict) -> List[Finding]:
         if not isinstance(procedimiento, dict):
             continue
         
-        nombre = procedimiento.get("nombre", "").lower()
+        nombre = (procedimiento.get("nombre") or "").lower()
         consentimiento = procedimiento.get("consentimiento_firmado", False)
         indicacion = procedimiento.get("indicacion", "")
         

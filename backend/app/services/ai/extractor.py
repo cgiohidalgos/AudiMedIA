@@ -111,7 +111,7 @@ def _try_fix_json_string(s: str) -> str:
         s = s.replace("'", '"')
     return s
 
-(base: dict, other: dict) -> dict:
+def _merge_clinical_dicts(base: dict, other: dict) -> dict:
     """Une dos diccionarios de variables clínicas.
     - para cadenas, conserva el valor de `base` si no es `None`.
     - para listas, concatena elementos únicos.
@@ -137,6 +137,33 @@ def _try_fix_json_string(s: str) -> str:
             if merged.get(k) is None:
                 merged[k] = v
     return merged
+
+
+def _extract_with_cohere(chunk: str, idx: int) -> dict:
+    """Extracción síncrona con Cohere Command R. Se ejecuta en thread executor."""
+    import cohere
+    co = cohere.Client(api_key=settings.COHERE_API_KEY)
+    try:
+        response = co.chat(
+            model=settings.COHERE_CHAT_MODEL,
+            message=EXTRACTION_PROMPT.format(text=chunk),
+            preamble=(
+                "Eres un auditor médico experto en normativa colombiana (CIE10, CUPS, Ley 1438). "
+                "IMPORTANTE: Responde ÚNICAMENTE con el JSON solicitado, sin texto adicional ni bloques markdown."
+            ),
+            temperature=0,
+        )
+        text = response.text
+        # Extraer bloque JSON del texto
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        raw = match.group() if match else text
+        return json.loads(_try_fix_json_string(raw))
+    except json.JSONDecodeError as e:
+        logger.error(f"  ❌ Fragmento {idx} - JSON inválido de Cohere: {e}")
+        return {"error": f"JSON inválido en fragmento {idx}: {str(e)}"}
+    except Exception as e:
+        logger.error(f"  ❌ Fragmento {idx} - Error Cohere: {type(e).__name__}: {str(e)}")
+        return {"error": f"Error Cohere en fragmento {idx}: {str(e)}"}
 
 
 async def extract_clinical_variables(text: str, progress_callback: Optional[Callable[[float], Any]] = None) -> dict:
@@ -168,6 +195,11 @@ async def extract_clinical_variables(text: str, progress_callback: Optional[Call
         logger.info(f"🔍 Texto dividido en {len(chunks)} fragmento(s) para extracción (paralelo)")
 
         async def _call_chunk(chunk: str, idx: int) -> dict:
+            if settings.EXTRACTION_PROVIDER == "cohere":
+                logger.info(f"🔵 Fragmento {idx}/{len(chunks)} → Cohere {settings.COHERE_CHAT_MODEL} (size {len(chunk)})")
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(None, _extract_with_cohere, chunk, idx)
+
             logger.info(f"🔍 Fragmento {idx}/{len(chunks)} iniciando (size {len(chunk)})")
             max_retries = 4
             for attempt in range(max_retries):
@@ -207,7 +239,8 @@ async def extract_clinical_variables(text: str, progress_callback: Optional[Call
             result = await _call_chunk(c, i + 1)
             results.append(result)
             if i < len(chunks) - 1:
-                await asyncio.sleep(2)
+                # Cohere tolera más concurrencia; OpenAI necesita pausa para TPM
+                await asyncio.sleep(0.5 if settings.EXTRACTION_PROVIDER == "cohere" else 2)
 
         combined: dict = {}
         errors = []
@@ -223,9 +256,9 @@ async def extract_clinical_variables(text: str, progress_callback: Optional[Call
             return {"error": "; ".join(errors)}
 
         logger.info(f"✅ Extracción completa, campos consolidados: {len(combined)}")
-        if errores:
-            logger.error(f"❌ Fragmentos fallidos: {json.dumps(errores, ensure_ascii=False, indent=2)}")
-            combined["errores_fragmentos"] = errores
+        if errors:
+            logger.error(f"❌ Fragmentos fallidos: {json.dumps(errors, ensure_ascii=False, indent=2)}")
+            combined["errores_fragmentos"] = errors
         logger.info(f"📊 Datos extraídos finales: {json.dumps(combined, ensure_ascii=False, indent=2)}")
         return combined
 
