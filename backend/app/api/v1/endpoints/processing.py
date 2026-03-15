@@ -162,17 +162,93 @@ async def _do_extract(session_id: str):
                 await db.commit()
 
 
+# ─── Background task: procesa TODOS los lotes internamente ──────────────────
+
+async def _process_all_batches_bg(session_id: str, user_id: str):
+    """
+    Tarea en segundo plano: procesa todos los lotes de IA sin intervención del frontend.
+    El frontend puede navegar libremente y sólo hace polling a /progress.
+    """
+    logger.info(f"🚀 [BG] Iniciando procesamiento en segundo plano para sesión {session_id}")
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(select(AuditSession).where(AuditSession.id == session_id))
+            session = result.scalar_one_or_none()
+            if not session:
+                logger.error(f"❌ [BG] Sesión {session_id} no encontrada")
+                return
+
+            total_batches = session.ai_chunks_total or 1
+            start_batch = session.ai_chunks_done or 0
+
+            chunks_q = await db.execute(
+                select(DocumentChunk)
+                .where(DocumentChunk.session_id == session_id)
+                .order_by(DocumentChunk.chunk_index)
+            )
+            chunks = chunks_q.scalars().all()
+
+            merged: dict = {}
+            if session.clinical_data_partial and session.clinical_data_partial not in ("{}", ""):
+                try:
+                    merged = json.loads(session.clinical_data_partial)
+                except json.JSONDecodeError:
+                    merged = {}
+
+            for batch_idx in range(start_batch, total_batches):
+                batch_chunks = chunks[batch_idx * BATCH_SIZE: (batch_idx + 1) * BATCH_SIZE]
+                batch_text = "\n\n".join(f"[Página {c.page_number}]\n{c.text}" for c in batch_chunks)
+
+                logger.info(
+                    f"🤖 [BG] Sesión {session_id}: lote {batch_idx + 1}/{total_batches} "
+                    f"({len(batch_chunks)} chunks, {len(batch_text):,} chars)"
+                )
+
+                partial = await extract_clinical_variables(batch_text)
+
+                if "error" not in partial:
+                    merged = _merge_clinical_dicts(merged, partial)
+                else:
+                    logger.warning(f"⚠️ [BG] Lote {batch_idx + 1} retornó error: {partial.get('error')}")
+
+                session.clinical_data_partial = json.dumps(merged, ensure_ascii=False)
+                session.ai_chunks_done = batch_idx + 1
+                await db.commit()
+
+            # Finalizar sesión
+            if merged:
+                await _finalize_session(session, merged, user_id, db)
+            else:
+                session.status = DocumentStatus.error.value
+                await db.commit()
+                logger.error(f"❌ [BG] Sesión {session_id}: sin datos clínicos al finalizar")
+
+        except Exception as exc:
+            logger.error(f"❌ [BG] Error en sesión {session_id}: {exc}", exc_info=True)
+            try:
+                await db.rollback()
+                async with AsyncSessionLocal() as db2:
+                    r = await db2.execute(select(AuditSession).where(AuditSession.id == session_id))
+                    s = r.scalar_one_or_none()
+                    if s:
+                        s.status = DocumentStatus.error.value
+                        await db2.commit()
+            except Exception:
+                pass
+
+
 # ─── Etapa 3: Análisis con IA ────────────────────────────────────────────────
 
 @router.post("/{session_id}/process", response_model=UploadResponse)
 async def process_with_ai(
     session_id: str,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Etapa 3 — Init: Prepara el análisis IA calculando el número de lotes.
-    Después llamar POST /{session_id}/process_batch repetidamente hasta is_last=True.
+    Etapa 3 — Init: Prepara el análisis IA, lanza el procesamiento en SEGUNDO PLANO
+    y retorna inmediatamente. El frontend sólo hace polling a /progress.
     """
     result = await db.execute(select(AuditSession).where(AuditSession.id == session_id))
     session = result.scalar_one_or_none()
@@ -181,24 +257,33 @@ async def process_with_ai(
     if session.status not in (
         DocumentStatus.extraido.value,
         DocumentStatus.error.value,
-        DocumentStatus.analizando.value,  # permite reanudar si partial_finalize falló
+        DocumentStatus.analizando.value,
     ):
         raise HTTPException(
             status_code=400,
-            detail=f"Estado actual '{session.status}'. La sesión debe estar en 'extraido' para procesar con IA.",
+            detail=f"Estado actual '{session.status}'. Solo se puede extraer desde 'subido'.",
         )
 
-    # ── Continuación: si ya hay progreso parcial, reanudar desde donde quedó ──
-    if (session.ai_chunks_done or 0) > 0 and session.clinical_data_partial not in (None, '{}', ''):
-        session.status = DocumentStatus.analizando.value
-        await db.commit()
+    # ── Continuación: si ya está analizando (bg task corriendo), retornar el estado actual ──
+    if session.status == DocumentStatus.analizando.value:
         return UploadResponse(
             session_id=session_id,
             status=DocumentStatus.analizando.value,
-            message=f"Continuando análisis desde lote {session.ai_chunks_done + 1}/{session.ai_chunks_total}.",
+            message=f"Análisis en curso: lote {session.ai_chunks_done}/{session.ai_chunks_total}.",
         )
 
-    # ── Inicio desde cero: contar chunks y calcular lotes ──
+    # ── Reanudación: si hay progreso parcial guardado, continuar desde donde quedó ──
+    if (session.ai_chunks_done or 0) > 0 and session.clinical_data_partial not in (None, '{}', ''):
+        session.status = DocumentStatus.analizando.value
+        await db.commit()
+        background_tasks.add_task(_process_all_batches_bg, session_id, current_user.id)
+        return UploadResponse(
+            session_id=session_id,
+            status=DocumentStatus.analizando.value,
+            message=f"Reanudando análisis desde lote {session.ai_chunks_done + 1}/{session.ai_chunks_total}.",
+        )
+
+    # ── Inicio desde cero ──
     chunks_q = await db.execute(
         select(DocumentChunk)
         .where(DocumentChunk.session_id == session_id)
@@ -215,10 +300,12 @@ async def process_with_ai(
     session.clinical_data_partial = "{}"
     await db.commit()
 
+    background_tasks.add_task(_process_all_batches_bg, session_id, current_user.id)
+
     return UploadResponse(
         session_id=session_id,
         status=DocumentStatus.analizando.value,
-        message=f"Análisis iniciado: {total_batches} lotes. Llame a /process_batch para procesar cada lote.",
+        message=f"Análisis iniciado en segundo plano: {total_batches} lotes a procesar.",
     )
 
 
