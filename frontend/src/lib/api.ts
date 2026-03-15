@@ -181,12 +181,36 @@ export const uploadApi = {
 
 // ─── Processing (etapas 2 y 3) ────────────────────────────────────────────────────────
 
+export interface AiProgress {
+  status: string;
+  ai_chunks_done: number;
+  ai_chunks_total: number;
+}
+
+export interface BatchResult {
+  session_id: string;
+  batch_done: number;
+  total_batches: number;
+  is_last: boolean;
+  status: DocumentStatus;
+  message: string;
+}
+
 export const processingApi = {
   extract: (sessionId: string) =>
     request<UploadResponse>(`/processing/${sessionId}/extract`, { method: 'POST' }),
 
   process: (sessionId: string) =>
     request<UploadResponse>(`/processing/${sessionId}/process`, { method: 'POST' }),
+
+  processBatch: (sessionId: string) =>
+    request<BatchResult>(`/processing/${sessionId}/process_batch`, { method: 'POST' }),
+
+  partialFinalize: (sessionId: string) =>
+    request<UploadResponse>(`/processing/${sessionId}/partial_finalize`, { method: 'POST' }),
+
+  getProgress: (sessionId: string) =>
+    request<AiProgress>(`/processing/${sessionId}/progress`),
 };
 
 // ─── Pacientes ───────────────────────────────────────────────────────────────
@@ -374,6 +398,21 @@ export interface ChatResponse {
   patient_ids?: string[];
 }
 
+export interface RagReference {
+  chunk_index: number;
+  page_number: number;
+  text_snippet: string;
+  relevance_score: number;
+}
+
+export interface RagChatResponse {
+  answer: string;
+  references: RagReference[];
+  model_used: string;
+  chunks_total: number;
+  chunks_used: number;
+}
+
 export const chatApi = {
   ask: (patient_id: string, question: string) =>
     request<ChatResponse>('/chat/', {
@@ -388,6 +427,12 @@ export const chatApi = {
     request<ChatResponse>('/chat/multi-history', {
       method: 'POST',
       body: JSON.stringify({ question, patient_ids }),
+    }),
+
+  askRag: (session_id: string, question: string, history: { role: string; content: string }[] = []) =>
+    request<RagChatResponse>('/chat/rag', {
+      method: 'POST',
+      body: JSON.stringify({ session_id, question, history }),
     }),
 };
 

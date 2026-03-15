@@ -1,8 +1,8 @@
-import { useState, useCallback, useRef } from 'react';
+﻿import { useState, useCallback, useRef } from 'react';
 import { Upload, FileText, X, Loader2, CheckCircle2, AlertCircle, ScanText, BrainCircuit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UploadedFile, FileStatus } from '@/types/audit';
-import { uploadApi, processingApi, type DocumentStatus } from '@/lib/api';
+import { uploadApi, processingApi, type DocumentStatus, type AiProgress, type BatchResult } from '@/lib/api';
 import { toast } from 'sonner';
 
 // â”€â”€â”€ Labels y helpers visuales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -44,6 +44,7 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
   const [files, setFiles] = useState<UploadedFileWithSession[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [aiProgress, setAiProgress] = useState<Record<string, AiProgress>>({});
   const rawFilesRef = useRef<File[]>([]);
 
   // â”€â”€â”€ Agregar PDFs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -152,41 +153,106 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
     }
   };
 
-  // â”€â”€â”€ Etapa 3: analizar con IA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleProcess = async (fileId: string, sessionId: string) => {
-    setFiles(prev => prev.map(f =>
-      f.id === fileId ? { ...f, status: 'analizando' as FileStatus, progress: 80 } : f,
-    ));
-
+  // ─── Reintentar: comprueba estado real del backend y actúa en consecuencia ──
+  const handleRetry = async (fileId: string, sessionId: string) => {
     try {
-      await processingApi.process(sessionId);
-      const finalStatus = await pollUntilStable(sessionId, fileId, ['listo']);
-
-      if (finalStatus === 'listo') {
-        toast.success('Â¡AnÃ¡lisis completado!');
-        // Si todos los archivos con sessionId estÃ¡n listos o en error, navegar
+      const s = await uploadApi.getStatus(sessionId);
+      const status = s.status as DocumentStatus;
+      if (status === 'listo') {
         setFiles(prev => {
           const updated = prev.map(f =>
             f.id === fileId ? { ...f, status: 'listo' as FileStatus, progress: 100 } : f,
           );
-          const allDone = updated
-            .filter(f => f.sessionId)
-            .every(f => f.status === 'listo' || f.status === 'error');
-          if (allDone) {
-            const hadErrors = updated.every(f => f.status === 'error');
-            setTimeout(() => onStartAnalysis(hadErrors), 800);
-          }
+          const allDone = updated.filter(f => f.sessionId).every(f => f.status === 'listo' || f.status === 'error');
+          if (allDone) setTimeout(() => onStartAnalysis(updated.every(f => f.status === 'error')), 400);
           return updated;
         });
+      } else if (status === 'extraido') {
+        await handleProcess(fileId, sessionId);
+      } else if (status === 'subido') {
+        await handleExtract(fileId, sessionId);
       } else {
-        toast.error('Error durante el anÃ¡lisis con IA.');
+        // subido u otro estado → volver a extracción
+        await handleExtract(fileId, sessionId);
+      }
+    } catch {
+      await handleExtract(fileId, sessionId);
+    }
+  };
+
+  // --- Etapa 3: analizar con IA — procesa todos los lotes en una sola pasada ---
+
+  const handleProcess = async (fileId: string, sessionId: string) => {
+    setFiles(prev => prev.map(f =>
+      f.id === fileId ? { ...f, status: 'analizando' as FileStatus, progress: 80 } : f,
+    ));
+    setAiProgress(prev => ({
+      ...prev,
+      [fileId]: {
+        status: 'analizando',
+        ai_chunks_done: prev[fileId]?.ai_chunks_done ?? 0,
+        ai_chunks_total: prev[fileId]?.ai_chunks_total ?? 0,
+      },
+    }));
+
+    try {
+      // Init: prepara el análisis (o reanuda desde donde quedó)
+      const init = await processingApi.process(sessionId);
+
+      // Extraer total de lotes del mensaje — soporta "26 lotes" y "lote 11/26"
+      const matchFresh = init.message.match(/(\d+) lotes/);
+      const matchResume = init.message.match(/\/(\d+)/);
+      const totalFromMsg = matchFresh ? Number(matchFresh[1]) : matchResume ? Number(matchResume[1]) : 0;
+      if (totalFromMsg > 0) {
+        setAiProgress(prev => ({
+          ...prev,
+          [fileId]: {
+            status: 'analizando',
+            ai_chunks_done: prev[fileId]?.ai_chunks_done ?? 0,
+            ai_chunks_total: totalFromMsg,
+          },
+        }));
+      }
+
+      // ── Procesar TODOS los lotes hasta que is_last=true ───────────────────
+      let batch: BatchResult | null = null;
+      while (true) {
+        batch = await processingApi.processBatch(sessionId);
+
+        setAiProgress(prev => ({
+          ...prev,
+          [fileId]: { status: batch!.status, ai_chunks_done: batch!.batch_done, ai_chunks_total: batch!.total_batches },
+        }));
+
+        const pct = 80 + Math.round((batch.batch_done / (batch.total_batches || 1)) * 19);
+        setFiles(prev => prev.map(f =>
+          f.id === fileId ? { ...f, status: batch!.status as FileStatus, progress: pct } : f,
+        ));
+
+        if (batch.is_last || batch.status === 'listo' || batch.status === 'error') break;
+      }
+
+      if (!batch) return;
+
+      if (batch.status === 'listo') {
+        // ── Análisis completo → ir a resultados ──────────────────────────────
+        toast.success('¡Análisis completado!');
+        setFiles(prev => {
+          const updated = prev.map(f =>
+            f.id === fileId ? { ...f, status: 'listo' as FileStatus, progress: 100 } : f,
+          );
+          const allDone = updated.filter(f => f.sessionId).every(f => f.status === 'listo' || f.status === 'error');
+          if (allDone) setTimeout(() => onStartAnalysis(updated.every(f => f.status === 'error')), 800);
+          return updated;
+        });
+      } else if (batch.status === 'error') {
+        toast.error('Error durante el análisis con IA.');
+        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'error' as FileStatus } : f));
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error en anÃ¡lisis IA';
+      const msg = err instanceof Error ? err.message : 'Error en análisis IA';
       toast.error(msg);
-      setFiles(prev => prev.map(f =>
-        f.id === fileId ? { ...f, status: 'error' as FileStatus } : f,
-      ));
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'error' as FileStatus } : f));
     }
   };
 
@@ -279,20 +345,38 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
                       <span className="text-xs text-muted-foreground shrink-0">{statusLabels[file.status]}</span>
                     </div>
 
+                    {/* Barra de progreso lectura IA */}
+                    {file.status === 'analizando' && aiProgress[file.id] && aiProgress[file.id].ai_chunks_total > 0 && (
+                      <div className="mt-1.5">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-muted-foreground">Leyendo historia cl&#237;nica...</span>
+                          <span className="text-[10px] text-blue-500 font-medium">
+                            {aiProgress[file.id].ai_chunks_done} / {aiProgress[file.id].ai_chunks_total} lotes
+                          </span>
+                        </div>
+                        <div className="h-1 bg-secondary rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-500 rounded-full transition-all duration-700"
+                            style={{ width: `${Math.round((aiProgress[file.id].ai_chunks_done / aiProgress[file.id].ai_chunks_total) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {/* Etapas visuales */}
                     <div className="flex items-center gap-1 mt-2 text-[10px] text-muted-foreground">
-                      <span className={file.progress >= 33 ? 'text-foreground font-medium' : ''}>â‘  Subido</span>
-                      <span className="mx-1">â†’</span>
-                      <span className={file.progress >= 66 ? 'text-foreground font-medium' : ''}>â‘¡ Texto extraÃ­do</span>
-                      <span className="mx-1">â†’</span>
-                      <span className={file.progress >= 100 ? 'text-green-500 font-medium' : ''}>â‘¢ IA procesada</span>
+                      <span className={file.progress >= 33 ? 'text-foreground font-medium' : ''}>① Subido</span>
+                      <span className="mx-1">→</span>
+                      <span className={file.progress >= 66 ? 'text-foreground font-medium' : ''}>② Texto extraído</span>
+                      <span className="mx-1">→</span>
+                      <span className={file.progress >= 100 ? 'text-green-500 font-medium' : ''}>③ IA procesada</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Botones de acciÃ³n segÃºn etapa */}
+                {/* Botones de acción según etapa */}
                 {file.sessionId && (
-                  <div className="mt-3 flex gap-2 justify-end">
+                  <div className="mt-3 flex flex-wrap gap-2 justify-end">
                     {file.status === 'subido' && (
                       <Button
                         size="sm"
@@ -304,6 +388,8 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
                         Extraer texto
                       </Button>
                     )}
+
+                    {/* Análisis con IA */}
                     {file.status === 'extraido' && (
                       <Button
                         size="sm"
@@ -314,14 +400,15 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
                         Analizar con IA
                       </Button>
                     )}
+
                     {file.status === 'error' && (
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => handleExtract(file.id, file.sessionId!)}
+                        onClick={() => handleRetry(file.id, file.sessionId!)}
                         className="gap-1.5 font-body text-xs"
                       >
-                        Reintentar extracciÃ³n
+                        Reintentar extracción
                       </Button>
                     )}
                   </div>

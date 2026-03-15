@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
-import { X, Send, Loader2, MessageSquare, Users, FileText } from 'lucide-react';
-import { chatApi } from '@/lib/api';
+﻿import { useState, useEffect, useRef } from 'react';
+import { X, Send, Loader2, MessageSquare, Users, FileText, BookOpen } from 'lucide-react';
+import { chatApi, patientsApi, type RagReference } from '@/lib/api';
 
 interface ChatPanelProps {
   patientId: string;
   patientLabel: string;
   allPatientIds?: string[];
   onClose: () => void;
-  /** Callback invocado al hacer click en una referencia de página. Abre el visor en esa página. */
+  /** Callback invocado al hacer click en una referencia de pÃ¡gina. Abre el visor en esa pÃ¡gina. */
   onViewPage?: (page: number) => void;
 }
 
@@ -15,22 +15,27 @@ interface ChatMessageLocal {
   role: 'user' | 'assistant';
   content: string;
   referencias?: { pagina: number; fragmento: string }[];
+  ragRefs?: RagReference[];
+  model?: string;
 }
 
 const suggestions = [
-  '¿Hay evolución de hoy?',
-  '¿Está justificada la estancia?',
-  '¿Faltan reportes de estudios?',
-  '¿Hay medicamentos sin indicación?',
-  '¿Cuál es el riesgo de glosa?',
+  'Â¿Hay evoluciÃ³n de hoy?',
+  'Â¿EstÃ¡ justificada la estancia?',
+  'Â¿Faltan reportes de estudios?',
+  'Â¿Hay medicamentos sin indicaciÃ³n?',
+  'Â¿CuÃ¡l es el riesgo de glosa?',
 ];
+
+type ChatMode = 'single' | 'multi' | 'rag';
 
 const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage }: ChatPanelProps) => {
   const [messages, setMessages] = useState<ChatMessageLocal[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [chatMode, setChatMode] = useState<'single' | 'multi'>('single');
+  const [chatMode, setChatMode] = useState<ChatMode>('single');
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -41,6 +46,13 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
     scrollToBottom();
   }, [messages]);
 
+  // Cargar session_id para el modo RAG
+  useEffect(() => {
+    patientsApi.getSession(patientId)
+      .then(s => setSessionId(s.id))
+      .catch(() => setSessionId(null));
+  }, [patientId]);
+
   useEffect(() => {
     const loadHistory = async () => {
       try {
@@ -49,7 +61,7 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
         if (history.length === 0) {
           setMessages([{
             role: 'assistant',
-            content: `Chat activo para ${patientLabel}. Puede consultar cualquier aspecto de la historia clínica. Las respuestas incluirán referencia a la página del documento fuente.\n\n⚠️ Esta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisión clínica profesional.`,
+            content: `Chat activo para ${patientLabel}. Puede consultar cualquier aspecto de la historia clÃ­nica. Las respuestas incluirÃ¡n referencia a la pÃ¡gina del documento fuente.\n\nâš ï¸ Esta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisiÃ³n clÃ­nica profesional.`,
           }]);
         } else {
           setMessages(history.map(m => ({
@@ -79,7 +91,21 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
     setIsLoading(true);
 
     try {
-      if (chatMode === 'multi' && allPatientIds && allPatientIds.length > 1) {
+      if (chatMode === 'rag') {
+        if (!sessionId) throw new Error('SesiÃ³n no encontrada. Extrae el texto del PDF primero.');
+        // Construir historial para Cohere (Ãºltimos 8 intercambios)
+        const history = messages
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .slice(-8)
+          .map(m => ({ role: m.role, content: m.content }));
+        const response = await chatApi.askRag(sessionId, text, history);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: response.answer,
+          ragRefs: response.references,
+          model: response.model_used,
+        }]);
+      } else if (chatMode === 'multi' && allPatientIds && allPatientIds.length > 1) {
         const response = await chatApi.askMulti(text, allPatientIds);
         setMessages(prev => [...prev, {
           role: 'assistant',
@@ -95,10 +121,11 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
         }]);
       }
     } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error al procesar su pregunta.';
       console.error('Error enviando mensaje:', error);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Lo siento, hubo un error al procesar su pregunta. Por favor, intente nuevamente.',
+        content: `Lo siento, hubo un error: ${msg}`,
       }]);
     } finally {
       setIsLoading(false);
@@ -114,7 +141,9 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
         <h2 className="panel-header truncate">
           {chatMode === 'multi'
             ? `Todas las historias (${allPatientIds?.length})`
-            : `Chat — ${patientLabel}`}
+            : chatMode === 'rag'
+            ? `RAG â€” ${patientLabel}`
+            : `Chat â€” ${patientLabel}`}
         </h2>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0">
           <X className="h-4 w-4" />
@@ -122,33 +151,49 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
       </div>
 
       {/* Mode toggle */}
-      {showMultiToggle && (
-        <div className="px-4 py-2 border-b border-border flex items-center gap-2">
-          <span className="text-xs text-muted-foreground font-body shrink-0">Modo:</span>
-          <div className="flex rounded-md overflow-hidden border border-border text-xs flex-1">
-            <button
-              onClick={() => setChatMode('single')}
-              className={`flex-1 flex items-center justify-center gap-1 py-1 font-body transition-colors ${
-                chatMode === 'single'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-secondary'
-              }`}
-            >
-              <MessageSquare className="h-3 w-3" />
-              Esta historia
-            </button>
+      <div className="px-4 py-2 border-b border-border flex items-center gap-2">
+        <span className="text-xs text-muted-foreground font-body shrink-0">Modo:</span>
+        <div className="flex rounded-md overflow-hidden border border-border text-xs flex-1">
+          <button
+            onClick={() => setChatMode('single')}
+            className={`flex-1 flex items-center justify-center gap-1 py-1 font-body transition-colors ${
+              chatMode === 'single' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'
+            }`}
+            title="Chat con datos estructurados del paciente (OpenAI)"
+          >
+            <MessageSquare className="h-3 w-3" />
+            Datos
+          </button>
+          {showMultiToggle && (
             <button
               onClick={() => setChatMode('multi')}
               className={`flex-1 flex items-center justify-center gap-1 py-1 font-body transition-colors ${
-                chatMode === 'multi'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-secondary'
+                chatMode === 'multi' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'
               }`}
+              title="Chat sobre mÃºltiples pacientes"
             >
               <Users className="h-3 w-3" />
-              Todas ({allPatientIds?.length})
+              Todos
             </button>
-          </div>
+          )}
+          <button
+            onClick={() => setChatMode('rag')}
+            className={`flex-1 flex items-center justify-center gap-1 py-1 font-body transition-colors ${
+              chatMode === 'rag' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-secondary'
+            }`}
+            title="RAG: busca en el texto original del PDF (Cohere Command R)"
+          >
+            <BookOpen className="h-3 w-3" />
+            RAG
+          </button>
+        </div>
+      </div>
+
+      {/* Info banner mode RAG */}
+      {chatMode === 'rag' && (
+        <div className="px-4 py-2 bg-blue-50 border-b border-blue-200 text-[10px] text-blue-700 font-body">
+          Buscando en el <strong>texto original del PDF</strong> con Cohere Command R + Rerank.
+          {!sessionId && <span className="text-red-600"> âš ï¸ Extrae el texto primero.</span>}
         </div>
       )}
 
@@ -179,6 +224,7 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
               }`}>
                 {m.content}
               </div>
+              {/* Referencias modo clÃ¡sico */}
               {m.role === 'assistant' && m.referencias && m.referencias.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {[...new Set(m.referencias.map(r => r.pagina))].sort((a, b) => a - b).map(page => (
@@ -187,21 +233,46 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
                         key={page}
                         onClick={() => onViewPage(page)}
                         className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 rounded px-2 py-0.5 font-medium font-body flex items-center gap-1 transition-colors"
-                        title={`Ver página ${page} en el documento`}
                       >
                         <FileText className="h-2.5 w-2.5" />
-                        pág. {page}
+                        pÃ¡g. {page}
                       </button>
                     ) : (
-                      <span
-                        key={page}
-                        className="text-xs bg-blue-100 text-blue-700 rounded px-2 py-0.5 font-medium font-body"
-                        title={`Referencia a página ${page}`}
-                      >
-                        pág. {page}
+                      <span key={page} className="text-xs bg-blue-100 text-blue-700 rounded px-2 py-0.5 font-medium font-body">
+                        pÃ¡g. {page}
                       </span>
                     )
                   ))}
+                </div>
+              )}
+              {/* Referencias modo RAG */}
+              {m.role === 'assistant' && m.ragRefs && m.ragRefs.length > 0 && (
+                <div className="mt-1.5 space-y-1">
+                  <p className="text-[10px] text-muted-foreground font-body">
+                    Fragmentos usados ({m.ragRefs.length}):
+                  </p>
+                  {m.ragRefs.map((r, ri) => (
+                    <div key={ri} className="text-[10px] bg-blue-50 border border-blue-200 rounded px-2 py-1 font-body">
+                      <div className="flex items-center justify-between mb-0.5">
+                        {onViewPage ? (
+                          <button
+                            onClick={() => onViewPage(r.page_number)}
+                            className="text-blue-700 hover:underline font-medium flex items-center gap-1"
+                          >
+                            <FileText className="h-2.5 w-2.5" />
+                            pÃ¡g. {r.page_number}
+                          </button>
+                        ) : (
+                          <span className="text-blue-700 font-medium">pÃ¡g. {r.page_number}</span>
+                        )}
+                        <span className="text-muted-foreground">score: {r.relevance_score.toFixed(2)}</span>
+                      </div>
+                      <p className="text-muted-foreground line-clamp-2">{r.text_snippet}</p>
+                    </div>
+                  ))}
+                  {m.model && (
+                    <p className="text-[9px] text-muted-foreground font-body text-right">modelo: {m.model}</p>
+                  )}
                 </div>
               )}
             </div>
@@ -211,7 +282,7 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
           <div className="mr-4">
             <div className="rounded-md p-3 text-sm font-body bg-secondary text-foreground flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Generando respuesta...</span>
+              <span>{chatMode === 'rag' ? 'Buscando en el documento...' : 'Generando respuesta...'}</span>
             </div>
           </div>
         )}
@@ -224,13 +295,19 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !isLoading && sendMessage(input)}
-          placeholder={chatMode === 'multi' ? 'Pregunta sobre todos los pacientes...' : 'Escriba su pregunta...'}
-          disabled={isLoading}
+          placeholder={
+            chatMode === 'rag'
+              ? 'Buscar en el PDF...'
+              : chatMode === 'multi'
+              ? 'Pregunta sobre todos los pacientes...'
+              : 'Escriba su pregunta...'
+          }
+          disabled={isLoading || (chatMode === 'rag' && !sessionId)}
           className="flex-1 font-body text-sm bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           onClick={() => sendMessage(input)}
-          disabled={isLoading || !input.trim()}
+          disabled={isLoading || !input.trim() || (chatMode === 'rag' && !sessionId)}
           className="bg-primary text-primary-foreground rounded-md p-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoading ? (

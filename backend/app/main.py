@@ -29,9 +29,20 @@ from app.models.audit import DocumentChunk  # noqa: F401
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from sqlalchemy import text
     # Crear tablas al iniciar (en producción usar Alembic)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Migración segura: añadir columnas de progreso IA si no existen
+        for _sql in [
+            "ALTER TABLE auditoria_sesion ADD COLUMN ai_chunks_done INTEGER DEFAULT 0",
+            "ALTER TABLE auditoria_sesion ADD COLUMN ai_chunks_total INTEGER DEFAULT 0",
+            "ALTER TABLE auditoria_sesion ADD COLUMN clinical_data_partial TEXT DEFAULT NULL",
+        ]:
+            try:
+                await conn.execute(text(_sql))
+            except Exception:
+                pass  # La columna ya existe
 
     # Crear usuarios por defecto si no existen
     async with AsyncSessionLocal() as db:
