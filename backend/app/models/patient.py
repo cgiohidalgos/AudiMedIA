@@ -67,3 +67,4 @@ class PatientCase(Base):
 
     audit_sessions = relationship("AuditSession", back_populates="patient", lazy="select")
     findings = relationship("AuditFinding", back_populates="patient", lazy="select", cascade="all, delete-orphan")
+    recommendations = relationship("Recommendation", back_populates="patient", lazy="select", cascade="all, delete-orphan")

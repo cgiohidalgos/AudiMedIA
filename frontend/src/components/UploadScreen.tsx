@@ -1,8 +1,9 @@
-﻿import { useState, useCallback, useRef } from 'react';
+﻿import { useState, useCallback, useRef, useEffect } from 'react';
 import { Upload, FileText, X, Loader2, CheckCircle2, AlertCircle, ScanText, BrainCircuit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UploadedFile, FileStatus } from '@/types/audit';
-import { uploadApi, processingApi, type DocumentStatus, type AiProgress, type BatchResult } from '@/lib/api';
+import { uploadApi, processingApi, type DocumentStatus, type AiProgress } from '@/lib/api';
+import { useProcessing } from '@/contexts/ProcessingContext';
 import { toast } from 'sonner';
 
 // â”€â”€â”€ Labels y helpers visuales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -41,11 +42,68 @@ interface UploadScreenProps {
 }
 
 const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
+  const { activeAnalyses, progress: bgProgress, addAnalysis } = useProcessing();
   const [files, setFiles] = useState<UploadedFileWithSession[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [aiProgress, setAiProgress] = useState<Record<string, AiProgress>>({});
   const rawFilesRef = useRef<File[]>([]);
+
+  // Sincronizar progreso global (background polling) → estado local de barras
+  useEffect(() => {
+    setFiles(prev => prev.map(f => {
+      if (!f.sessionId) return f;
+      const p = bgProgress[f.sessionId];
+      if (!p) return f;
+      if (p.status === 'analizando') {
+        const pct = 66 + Math.round((p.ai_chunks_done / (p.ai_chunks_total || 1)) * 33);
+        return { ...f, status: 'analizando' as FileStatus, progress: pct };
+      }
+      return f;
+    }));
+    // Actualizar barras IA
+    setAiProgress(prev => {
+      const next = { ...prev };
+      files.forEach(f => {
+        if (f.sessionId && bgProgress[f.sessionId]) {
+          next[f.id] = bgProgress[f.sessionId];
+        }
+      });
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgProgress]);
+
+  // Escuchar evento de finalización del análisis en segundo plano
+  useEffect(() => {
+    const onComplete = (e: Event) => {
+      const { sessionId, fileId } = (e as CustomEvent).detail;
+      setFiles(prev => {
+        const updated = prev.map(f =>
+          (f.id === fileId || f.sessionId === sessionId)
+            ? { ...f, status: 'listo' as FileStatus, progress: 100 }
+            : f
+        );
+        const allDone = updated.filter(f => f.sessionId).every(f => f.status === 'listo' || f.status === 'error');
+        if (allDone) setTimeout(() => onStartAnalysis(updated.every(f => f.status === 'error')), 800);
+        return updated;
+      });
+    };
+    const onError = (e: Event) => {
+      const { sessionId, fileId } = (e as CustomEvent).detail;
+      setFiles(prev => prev.map(f =>
+        (f.id === fileId || f.sessionId === sessionId)
+          ? { ...f, status: 'error' as FileStatus }
+          : f
+      ));
+    };
+    window.addEventListener('processingComplete', onComplete);
+    window.addEventListener('processingError', onError);
+    return () => {
+      window.removeEventListener('processingComplete', onComplete);
+      window.removeEventListener('processingError', onError);
+    };
+  }, [onStartAnalysis]);
 
   // â”€â”€â”€ Agregar PDFs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const addFiles = useCallback((newFiles: FileList | null) => {
@@ -180,77 +238,33 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
     }
   };
 
-  // --- Etapa 3: analizar con IA — procesa todos los lotes en una sola pasada ---
+  // --- Etapa 3: analizar con IA — lanza en segundo plano y retorna inmediatamente ---
 
   const handleProcess = async (fileId: string, sessionId: string) => {
+    const file = files.find(f => f.id === fileId);
     setFiles(prev => prev.map(f =>
-      f.id === fileId ? { ...f, status: 'analizando' as FileStatus, progress: 80 } : f,
+      f.id === fileId ? { ...f, status: 'analizando' as FileStatus, progress: 66 } : f,
     ));
-    setAiProgress(prev => ({
-      ...prev,
-      [fileId]: {
-        status: 'analizando',
-        ai_chunks_done: prev[fileId]?.ai_chunks_done ?? 0,
-        ai_chunks_total: prev[fileId]?.ai_chunks_total ?? 0,
-      },
-    }));
 
     try {
-      // Init: prepara el análisis (o reanuda desde donde quedó)
       const init = await processingApi.process(sessionId);
 
-      // Extraer total de lotes del mensaje — soporta "26 lotes" y "lote 11/26"
-      const matchFresh = init.message.match(/(\d+) lotes/);
-      const matchResume = init.message.match(/\/(\d+)/);
-      const totalFromMsg = matchFresh ? Number(matchFresh[1]) : matchResume ? Number(matchResume[1]) : 0;
-      if (totalFromMsg > 0) {
+      // Extraer total de lotes del mensaje de respuesta
+      const match = init.message.match(/(\d+) lotes/);
+      const total = match ? Number(match[1]) : 0;
+      if (total > 0) {
         setAiProgress(prev => ({
           ...prev,
-          [fileId]: {
-            status: 'analizando',
-            ai_chunks_done: prev[fileId]?.ai_chunks_done ?? 0,
-            ai_chunks_total: totalFromMsg,
-          },
+          [fileId]: { status: 'analizando', ai_chunks_done: 0, ai_chunks_total: total },
         }));
       }
 
-      // ── Procesar TODOS los lotes hasta que is_last=true ───────────────────
-      let batch: BatchResult | null = null;
-      while (true) {
-        batch = await processingApi.processBatch(sessionId);
+      // Registrar en contexto global — el polling corre en segundo plano
+      addAnalysis({ sessionId, fileId, fileName: file?.name ?? 'Historia clínica' });
 
-        setAiProgress(prev => ({
-          ...prev,
-          [fileId]: { status: batch!.status, ai_chunks_done: batch!.batch_done, ai_chunks_total: batch!.total_batches },
-        }));
-
-        const pct = 80 + Math.round((batch.batch_done / (batch.total_batches || 1)) * 19);
-        setFiles(prev => prev.map(f =>
-          f.id === fileId ? { ...f, status: batch!.status as FileStatus, progress: pct } : f,
-        ));
-
-        if (batch.is_last || batch.status === 'listo' || batch.status === 'error') break;
-      }
-
-      if (!batch) return;
-
-      if (batch.status === 'listo') {
-        // ── Análisis completo → ir a resultados ──────────────────────────────
-        toast.success('¡Análisis completado!');
-        setFiles(prev => {
-          const updated = prev.map(f =>
-            f.id === fileId ? { ...f, status: 'listo' as FileStatus, progress: 100 } : f,
-          );
-          const allDone = updated.filter(f => f.sessionId).every(f => f.status === 'listo' || f.status === 'error');
-          if (allDone) setTimeout(() => onStartAnalysis(updated.every(f => f.status === 'error')), 800);
-          return updated;
-        });
-      } else if (batch.status === 'error') {
-        toast.error('Error durante el análisis con IA.');
-        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'error' as FileStatus } : f));
-      }
+      toast.success('Análisis iniciado. Puede seguir usando la plataforma mientras se procesa.');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error en análisis IA';
+      const msg = err instanceof Error ? err.message : 'Error al iniciar análisis IA';
       toast.error(msg);
       setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'error' as FileStatus } : f));
     }

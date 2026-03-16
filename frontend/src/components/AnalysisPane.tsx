@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { PatientCase, AuditFinding } from '@/types/audit';
 import RiskBadge from '@/components/RiskBadge';
-import { ChevronDown, ChevronRight, FileText, CheckCircle2, AlertTriangle, Download } from 'lucide-react';
+import RecommendationsPanel from '@/components/RecommendationsPanel';
+import { ChevronDown, ChevronRight, FileText, CheckCircle2, AlertTriangle, Download, BookOpen } from 'lucide-react';
 import { patientsApi } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
@@ -9,6 +10,8 @@ interface AnalysisPaneProps {
   patient: PatientCase;
   onOpenChat: () => void;
   onTraceToSource: (page: number) => void;
+  /** Abre el visor de PDF integrado */
+  onOpenPDF?: () => void;
 }
 
 const moduloLabels: Record<string, string> = {
@@ -81,7 +84,7 @@ const computeStayAlert = (actual?: number, expectedStr?: string): string | null 
   return null;
 };
 
-const AnalysisPane = ({ patient, onOpenChat, onTraceToSource }: AnalysisPaneProps) => {
+const AnalysisPane = ({ patient, onOpenChat, onTraceToSource, onOpenPDF }: AnalysisPaneProps) => {
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({
     estancia: true, cie10: true, estudios: true, glosas: true,
   });
@@ -283,35 +286,32 @@ const AnalysisPane = ({ patient, onOpenChat, onTraceToSource }: AnalysisPaneProp
       })}
 
       {/* Recommendations */}
-      <div className="mb-4 border border-border rounded-md bg-card">
-        <div className="p-4">
-          <h3 className="font-display text-sm font-semibold text-foreground mb-3">Recomendaciones</h3>
-          <ul className="space-y-2">
-            {patient.recomendaciones.map((r, i) => (
-              <li key={i} className="font-body text-sm text-foreground flex items-start gap-2">
-                <span className="text-muted-foreground shrink-0">→</span>
-                {r}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      <RecommendationsPanel patientId={patient.id} />
 
       {/* Actions */}
-      <div className="flex gap-3 mt-6">
+      <div className="flex flex-wrap gap-3 mt-6">
+        {onOpenPDF && (
+          <button
+            onClick={onOpenPDF}
+            className="font-body text-sm bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors flex items-center gap-2"
+          >
+            <BookOpen className="h-4 w-4" />
+            Ver historia clínica
+          </button>
+        )}
+        <button
+          onClick={onOpenChat}
+          className="font-body text-sm border border-border rounded-md px-4 py-2 hover:bg-secondary transition-colors text-foreground"
+        >
+          Consultar historia
+        </button>
         <button
           onClick={handleDownloadPdf}
           disabled={isDownloading}
           className="font-body text-sm border border-border rounded-md px-4 py-2 hover:bg-secondary transition-colors text-foreground disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           <Download className="h-4 w-4" />
-          {isDownloading ? 'Descargando...' : 'Descargar PDF Original'}
-        </button>
-        <button
-          onClick={onOpenChat}
-          className="font-body text-sm border border-border rounded-md px-4 py-2 hover:bg-secondary transition-colors text-foreground"
-        >
-          Consultar historia
+          {isDownloading ? 'Descargando...' : 'Descargar PDF'}
         </button>
       </div>
     </div>

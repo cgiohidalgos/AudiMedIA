@@ -3,6 +3,7 @@ from app.models.patient import PatientCase, RiskLevel, JSONColumn
 from app.models.user import User, AppRole
 from app.models.audit import AuditSession, AuditFinding, AuditModule, DocumentStatus
 from app.models.tarifa import TarifaConfig
+from app.models.recommendation import Recommendation
 
 __all__ = [
     "PatientCase",
@@ -15,4 +16,5 @@ __all__ = [
     "AuditModule",
     "DocumentStatus",
     "TarifaConfig",
+    "Recommendation",
 ]

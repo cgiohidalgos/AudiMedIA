@@ -64,6 +64,22 @@ const AppPage = () => {
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
   const [pdfViewerPage, setPdfViewerPage] = useState(1);
 
+  // Escuchar evento de análisis completado en segundo plano → refrescar pacientes
+  useEffect(() => {
+    const onComplete = () => {
+      if (view === 'results' || view === 'control') {
+        // Ya estamos en resultados: refrescar lista automáticamente
+        setPollCounter(c => c + 1);
+      } else {
+        // El usuario está en otra vista: cambiar a resultados con el nuevo paciente
+        setPollingForUpload(true);
+        setView('results');
+      }
+    };
+    window.addEventListener('processingComplete', onComplete);
+    return () => window.removeEventListener('processingComplete', onComplete);
+  }, [view]);
+
   // Fetch patients from API
   useEffect(() => {
     if (view !== 'results' && view !== 'control') return;
@@ -347,9 +363,10 @@ const AppPage = () => {
           <AnalysisPane
             patient={selectedPatient}
             onOpenChat={() => setChatOpen(true)}
+            onOpenPDF={() => setPdfViewerOpen(true)}
             onTraceToSource={(page) => {
-              setChatOpen(true);
-              console.log(`Trace to source: page ${page}`);
+              setPdfViewerPage(page);
+              setPdfViewerOpen(true);
             }}
           />
         )}

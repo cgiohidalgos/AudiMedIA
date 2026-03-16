@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Importar modelos para que SQLAlchemy los registre (incluye DocumentChunk)
 from app.models import user, patient, audit  # noqa: F401
 from app.models.audit import DocumentChunk  # noqa: F401
+from app.models.recommendation import Recommendation  # noqa: F401
 
 
 @asynccontextmanager

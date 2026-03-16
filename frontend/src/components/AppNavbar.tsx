@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/components/RoleGuard';
+import { useProcessing } from '@/contexts/ProcessingContext';
 import {
   Sheet,
   SheetContent,
@@ -9,6 +10,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Progress } from '@/components/ui/progress';
 import {
   Menu,
   LayoutDashboard,
@@ -18,6 +25,10 @@ import {
   LogOut,
   User,
   ChevronRight,
+  BrainCircuit,
+  Loader2,
+  FileText,
+  CheckCircle2,
 } from 'lucide-react';
 
 export type AppView = 'upload' | 'results' | 'control';
@@ -39,6 +50,7 @@ export default function AppNavbar({ currentView, onViewChange, title, extraActio
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const { activeAnalyses, progress } = useProcessing();
 
   const roleLabel: Record<string, string> = {
     admin: 'Administrador',
@@ -201,12 +213,111 @@ export default function AppNavbar({ currentView, onViewChange, title, extraActio
         </div>
       </div>
 
-      {/* Derecha: acciones extra */}
-      {extraActions && (
-        <div className="flex items-center gap-2">
-          {extraActions}
-        </div>
-      )}
+      {/* Derecha: indicador de análisis en segundo plano + acciones extra */}
+      <div className="flex items-center gap-2">
+        {activeAnalyses.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="group flex items-center gap-2 px-3 py-1.5 rounded-full border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-medium shadow-sm hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:border-blue-300 dark:hover:border-blue-700 transition-all duration-150 cursor-pointer">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                </span>
+                <BrainCircuit className="h-3.5 w-3.5 shrink-0" />
+                {activeAnalyses.length === 1 ? (
+                  <span>
+                    {(() => {
+                      const p = progress[activeAnalyses[0].sessionId];
+                      return p && p.ai_chunks_total > 0
+                        ? `${p.ai_chunks_done} / ${p.ai_chunks_total} lotes`
+                        : 'Analizando...';
+                    })()}
+                  </span>
+                ) : (
+                  <span>{activeAnalyses.length} análisis activos</span>
+                )}
+                <Loader2 className="h-3 w-3 animate-spin shrink-0 opacity-70" />
+              </button>
+            </PopoverTrigger>
+
+            <PopoverContent
+              align="end"
+              sideOffset={8}
+              className="w-80 p-0 overflow-hidden rounded-xl border border-border shadow-xl"
+            >
+              {/* Header del panel */}
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/40">
+                <BrainCircuit className="h-4 w-4 text-blue-500 shrink-0" />
+                <span className="text-sm font-semibold text-foreground">Análisis en proceso</span>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {activeAnalyses.length} en cola
+                </span>
+              </div>
+
+              {/* Lista de análisis */}
+              <div className="divide-y divide-border max-h-72 overflow-y-auto">
+                {activeAnalyses.map((analysis, idx) => {
+                  const p = progress[analysis.sessionId];
+                  const done = p?.ai_chunks_done ?? 0;
+                  const total = p?.ai_chunks_total ?? 0;
+                  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                  const isFirst = idx === 0;
+
+                  return (
+                    <div key={analysis.sessionId} className="px-4 py-3 space-y-2">
+                      {/* Fila superior: icono + nombre + badge */}
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs font-medium text-foreground truncate flex-1">
+                          {analysis.fileName}
+                        </span>
+                        {isFirst ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] font-semibold uppercase tracking-wide shrink-0">
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                            Activo
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-semibold uppercase tracking-wide shrink-0">
+                            En cola
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Barra de progreso */}
+                      {isFirst && (
+                        <>
+                          <Progress value={pct} className="h-1.5" />
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-muted-foreground">
+                              {total > 0
+                                ? `Lote ${done} de ${total}`
+                                : 'Iniciando análisis...'}
+                            </span>
+                            {total > 0 && (
+                              <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                                {pct}%
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer */}
+              <div className="px-4 py-2.5 bg-muted/30 border-t border-border flex items-center gap-1.5">
+                <CheckCircle2 className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                <span className="text-[11px] text-muted-foreground/70">
+                  Puedes navegar con libertad. Te avisaremos al terminar.
+                </span>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
+        {extraActions}
+      </div>
     </header>
   );
 }
