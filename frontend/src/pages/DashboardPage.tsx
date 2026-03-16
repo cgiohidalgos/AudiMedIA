@@ -174,6 +174,42 @@ const DashboardPage = () => {
     }
   };
 
+  const handleExecutiveReport = async () => {
+    try {
+      const token = getToken();
+      if (!token) {
+        toast.error('No está autenticado');
+        return;
+      }
+
+      toast.info('Generando reporte ejecutivo…');
+
+      const response = await fetch(`/api/v1/dashboard/executive-report?periodo=${periodo}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cd = response.headers.get('Content-Disposition');
+      a.download = cd ? cd.split('filename=')[1].replace(/"/g, '') : 'reporte_ejecutivo.pdf';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast.success('Reporte ejecutivo descargado');
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al generar el reporte ejecutivo');
+    }
+  };
+
   if (loading || !financiero || !graficos) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -437,14 +473,18 @@ const DashboardPage = () => {
               <CardTitle>Exportar Reportes</CardTitle>
               <CardDescription>Descarga reportes en formato PDF o Excel</CardDescription>
             </CardHeader>
-            <CardContent className="flex gap-4">
-              <Button onClick={() => handleExport('pdf')}>
-                <Download className="h-4 w-4 mr-2" />
-                Exportar JSON
+            <CardContent className="flex flex-wrap gap-4">
+              <Button onClick={() => handleExecutiveReport()}>
+                <FileText className="h-4 w-4 mr-2" />
+                Reporte Ejecutivo PDF
               </Button>
               <Button variant="outline" onClick={() => handleExport('excel')}>
                 <Download className="h-4 w-4 mr-2" />
                 Exportar CSV
+              </Button>
+              <Button variant="outline" onClick={() => handleExport('pdf')}>
+                <Download className="h-4 w-4 mr-2" />
+                Exportar JSON
               </Button>
             </CardContent>
           </Card>

@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case, and_, extract
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Optional, List
 import io
 import csv
 import json
+import calendar
 from app.db.session import get_db
 from app.models.user import User, AppRole
 from app.models.patient import PatientCase, RiskLevel
@@ -17,6 +18,7 @@ from app.schemas.audit import (
     MetricaTemporal, TarifaConfigRead, TarifaConfigUpdate, ExportRequest
 )
 from app.api.v1.deps import get_current_user, require_role
+from app.services.reports.executive_report import generate_executive_report
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -426,3 +428,128 @@ async def export_dashboard(
                 "Content-Disposition": f"attachment; filename=dashboard_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.json"
             }
         )
+
+
+@router.get("/executive-report")
+async def download_executive_report(
+    periodo: str = Query("mes", regex="^(semana|mes|trimestre|anio)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(AppRole.coordinador, AppRole.admin)),
+):
+    """Descarga el Reporte Ejecutivo PDF de 1 página para gerencia."""
+
+    ahora = datetime.utcnow()
+
+    # ── Etiqueta del período ──────────────────────────────────────────────────
+    meses_es = [
+        "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    ]
+    if periodo == "mes":
+        periodo_label = f"{meses_es[ahora.month]} {ahora.year}"
+        fecha_inicio = ahora - timedelta(days=30)
+    elif periodo == "semana":
+        periodo_label = f"Semana del {(ahora - timedelta(days=7)).strftime('%d/%m')} al {ahora.strftime('%d/%m/%Y')}"
+        fecha_inicio = ahora - timedelta(days=7)
+    elif periodo == "trimestre":
+        periodo_label = f"Trimestre {((ahora.month - 1) // 3) + 1} — {ahora.year}"
+        fecha_inicio = ahora - timedelta(days=90)
+    else:  # anio
+        periodo_label = f"Año {ahora.year}"
+        fecha_inicio = datetime(ahora.year, 1, 1)
+
+    # ── Tarifa de referencia ──────────────────────────────────────────────────
+    tarifa = await db.scalar(select(TarifaConfig).where(TarifaConfig.activo == True))
+    valor_glosa = tarifa.valor_promedio_glosa if tarifa else 850_000
+
+    # ── KPIs del período ──────────────────────────────────────────────────────
+    glosas_periodo = await db.scalar(
+        select(func.count(AuditFinding.id)).where(
+            and_(AuditFinding.resuelto == True, AuditFinding.created_at >= fecha_inicio)
+        )
+    ) or 0
+    ahorro_mes = glosas_periodo * valor_glosa
+
+    inicio_anio = datetime(ahora.year, 1, 1)
+    glosas_anio = await db.scalar(
+        select(func.count(AuditFinding.id)).where(
+            and_(AuditFinding.resuelto == True, AuditFinding.created_at >= inicio_anio)
+        )
+    ) or 0
+    ahorro_anual = glosas_anio * valor_glosa
+
+    historias = await db.scalar(
+        select(func.count(PatientCase.id)).where(PatientCase.created_at >= fecha_inicio)
+    ) or 0
+
+    costo_auditoria = historias * 50_000
+    roi = ((ahorro_mes - costo_auditoria) / max(costo_auditoria, 1)) * 100
+
+    # ── Tendencia mensual (últimos 6 meses) ───────────────────────────────────
+    tendencia: list[dict] = []
+    for offset in range(5, -1, -1):
+        mes_ref = ahora.month - offset
+        anio_ref = ahora.year
+        while mes_ref <= 0:
+            mes_ref += 12
+            anio_ref -= 1
+        mes_inicio = datetime(anio_ref, mes_ref, 1)
+        ultimo_dia = calendar.monthrange(anio_ref, mes_ref)[1]
+        mes_fin = datetime(anio_ref, mes_ref, ultimo_dia, 23, 59, 59)
+        cnt = await db.scalar(
+            select(func.count(AuditFinding.id)).where(
+                and_(
+                    AuditFinding.resuelto == True,
+                    AuditFinding.created_at >= mes_inicio,
+                    AuditFinding.created_at <= mes_fin,
+                )
+            )
+        ) or 0
+        tendencia.append({
+            "label": meses_es[mes_ref][:3],
+            "valor": cnt * valor_glosa,
+        })
+
+    # ── Top módulos con mayor glosas ──────────────────────────────────────────
+    result = await db.execute(
+        select(AuditFinding.modulo, func.count(AuditFinding.id).label("cnt"))
+        .where(AuditFinding.created_at >= fecha_inicio)
+        .group_by(AuditFinding.modulo)
+        .order_by(func.count(AuditFinding.id).desc())
+        .limit(4)
+    )
+    rows = result.all()
+    total_hallazgos = sum(r.cnt for r in rows) or 1
+    nombres_modulo = {
+        "estancia": "Estancia prolongada",
+        "pertinencia": "Pertinencia CIE-10",
+        "estudios": "Estudios sin reporte",
+        "glosas": "Detección de glosas",
+    }
+    top_modulos = [
+        {
+            "nombre": nombres_modulo.get(r.modulo, r.modulo.capitalize()),
+            "porcentaje": round(r.cnt / total_hallazgos * 100, 1),
+            "valor": r.cnt * valor_glosa,
+        }
+        for r in rows
+    ]
+
+    # ── Generar PDF ───────────────────────────────────────────────────────────
+    pdf_bytes = generate_executive_report(
+        periodo_label=periodo_label,
+        ahorro_mes=ahorro_mes,
+        ahorro_anual=ahorro_anual,
+        roi=roi,
+        historias_auditadas=historias,
+        tendencia_mensual=tendencia,
+        top_modulos=top_modulos,
+        generado_por=current_user.full_name or current_user.email,
+    )
+
+    filename = f"reporte_ejecutivo_{ahora.strftime('%Y%m%d_%H%M')}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

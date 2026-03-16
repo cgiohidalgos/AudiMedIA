@@ -451,3 +451,59 @@ export interface DashboardMetrics {
 export const dashboardApi = {
   metrics: () => request<DashboardMetrics>('/dashboard/metrics'),
 };
+
+// ─── Recomendaciones ─────────────────────────────────────────────────────────
+
+export interface Recommendation {
+  id: string;
+  patient_id: string;
+  finding_id: string | null;
+  tipo: 'documentacion' | 'estancia' | 'estudios' | 'complicacion' | 'institucional';
+  categoria: 'mejora' | 'optimizacion' | 'alerta' | 'critica';
+  prioridad: 'baja' | 'media' | 'alta';
+  mensaje: string;
+  detalle: string | null;
+  estado: 'pendiente' | 'implementada' | 'descartada';
+  notas_resolucion: string | null;
+  created_at: string;
+  updated_at: string;
+  fecha_resolucion: string | null;
+}
+
+export interface RecommendationSummary {
+  total: number;
+  por_estado: Record<string, number>;
+  por_prioridad: Record<string, number>;
+  por_tipo: Record<string, number>;
+}
+
+export interface GenerateResponse {
+  generadas: number;
+  message: string;
+}
+
+export const recommendationsApi = {
+  list: (patientId: string, params?: { estado?: string; prioridad?: string; tipo?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.estado) q.set('estado', params.estado);
+    if (params?.prioridad) q.set('prioridad', params.prioridad);
+    if (params?.tipo) q.set('tipo', params.tipo);
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return request<Recommendation[]>(`/recommendations/patients/${patientId}${qs}`);
+  },
+
+  generate: (patientId: string, overwrite = false) =>
+    request<GenerateResponse>(
+      `/recommendations/patients/${patientId}/generate?overwrite=${overwrite}`,
+      { method: 'POST' },
+    ),
+
+  update: (id: string, payload: { estado?: string; notas_resolucion?: string }) =>
+    request<Recommendation>(`/recommendations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  summary: (patientId: string) =>
+    request<RecommendationSummary>(`/recommendations/patients/${patientId}/summary`),
+};

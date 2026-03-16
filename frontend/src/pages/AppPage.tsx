@@ -363,9 +363,10 @@ const AppPage = () => {
           <AnalysisPane
             patient={selectedPatient}
             onOpenChat={() => setChatOpen(true)}
+            onOpenPDF={() => setPdfViewerOpen(true)}
             onTraceToSource={(page) => {
-              setChatOpen(true);
-              console.log(`Trace to source: page ${page}`);
+              setPdfViewerPage(page);
+              setPdfViewerOpen(true);
             }}
           />
         )}
