@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 from app.models import user, patient, audit  # noqa: F401
 from app.models.audit import DocumentChunk  # noqa: F401
 from app.models.recommendation import Recommendation  # noqa: F401
+from app.models.notification import Notification  # noqa: F401
+from app.models.tarifa import TarifaConfig  # noqa: F401
+from app.models.eps_contrato import EPSContrato  # noqa: F401
+from app.models.servicio_hospitalario import ServicioHospitalario  # noqa: F401
 
 
 @asynccontextmanager
@@ -39,6 +43,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE auditoria_sesion ADD COLUMN ai_chunks_done INTEGER DEFAULT 0",
             "ALTER TABLE auditoria_sesion ADD COLUMN ai_chunks_total INTEGER DEFAULT 0",
             "ALTER TABLE auditoria_sesion ADD COLUMN clinical_data_partial TEXT DEFAULT NULL",
+            "ALTER TABLE tarifas_config ADD COLUMN tarifa_dia_intermedio FLOAT NOT NULL DEFAULT 600000.0",
         ]:
             try:
                 await conn.execute(text(_sql))

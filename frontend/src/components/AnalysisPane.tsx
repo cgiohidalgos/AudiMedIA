@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { PatientCase, AuditFinding } from '@/types/audit';
 import RiskBadge from '@/components/RiskBadge';
 import RecommendationsPanel from '@/components/RecommendationsPanel';
-import { ChevronDown, ChevronRight, FileText, CheckCircle2, AlertTriangle, Download, BookOpen } from 'lucide-react';
-import { patientsApi } from '@/lib/api';
+import { ChevronDown, ChevronRight, FileText, CheckCircle2, AlertTriangle, Download, BookOpen, Bell, FileDown } from 'lucide-react';
+import { patientsApi, notificationsApi } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
 interface AnalysisPaneProps {
@@ -313,9 +313,72 @@ const AnalysisPane = ({ patient, onOpenChat, onTraceToSource, onOpenPDF }: Analy
           <Download className="h-4 w-4" />
           {isDownloading ? 'Descargando...' : 'Descargar PDF'}
         </button>
+        <NotifyButtons patientId={patient.id} />
       </div>
     </div>
   );
 };
+
+// ── NotifyButtons ─────────────────────────────────────────────────────────────
+
+function NotifyButtons({ patientId }: { patientId: string }) {
+  const { toast } = useToast();
+  const [notifying, setNotifying] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleNotify = async () => {
+    setNotifying(true);
+    try {
+      const res = await notificationsApi.notifyTeam(patientId);
+      toast({
+        title: res.notificaciones_creadas > 0 ? 'Equipo notificado' : 'Sin destinatarios',
+        description: res.message,
+      });
+    } catch {
+      toast({ title: 'Error al notificar', variant: 'destructive' });
+    } finally {
+      setNotifying(false);
+    }
+  };
+
+  const handleSummary = async () => {
+    setDownloading(true);
+    try {
+      const text = await notificationsApi.pendingSummary(patientId);
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pendientes_${patientId.slice(0, 8)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: 'Error al generar resumen', variant: 'destructive' });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={handleNotify}
+        disabled={notifying}
+        className="font-body text-sm border border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400 rounded-md px-4 py-2 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+      >
+        <Bell className="h-4 w-4" />
+        {notifying ? 'Notificando...' : 'Notificar equipo'}
+      </button>
+      <button
+        onClick={handleSummary}
+        disabled={downloading}
+        className="font-body text-sm border border-border rounded-md px-4 py-2 hover:bg-secondary transition-colors text-foreground disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+      >
+        <FileDown className="h-4 w-4" />
+        {downloading ? 'Generando...' : 'Resumen TXT'}
+      </button>
+    </>
+  );
+}
 
 export default AnalysisPane;

@@ -62,6 +62,7 @@ const DashboardPage = () => {
   const [financiero, setFinanciero] = useState<DashboardFinanciero | null>(null);
   const [graficos, setGraficos] = useState<DashboardGraficos | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -70,6 +71,7 @@ const DashboardPage = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const token = getToken();
       
       if (!token) {
@@ -103,7 +105,9 @@ const DashboardPage = () => {
       setGraficos(grafData);
     } catch (error) {
       console.error('Error fetching dashboard:', error);
-      toast.error('Error al cargar el dashboard');
+      const msg = error instanceof Error ? error.message : 'Error al cargar el dashboard';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -210,12 +214,25 @@ const DashboardPage = () => {
     }
   };
 
-  if (loading || !financiero || !graficos) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
           <p className="mt-4 text-muted-foreground">Cargando dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !financiero || !graficos) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <AlertTriangle className="h-12 w-12 text-danger mx-auto" />
+          <p className="text-lg font-medium">No se pudo cargar el dashboard</p>
+          <p className="text-sm text-muted-foreground">{error || 'Sin datos disponibles'}</p>
+          <Button onClick={fetchDashboardData}>Reintentar</Button>
         </div>
       </div>
     );

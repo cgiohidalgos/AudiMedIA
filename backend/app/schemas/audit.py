@@ -108,6 +108,7 @@ class TarifaConfigRead(BaseModel):
     id: str
     tarifa_dia_hospitalizacion: float
     tarifa_dia_uci: float
+    tarifa_dia_intermedio: float
     porcentaje_glosas_historico: float
     glosa_evolucion_porcentaje: float
     valor_promedio_glosa: float
@@ -122,10 +123,90 @@ class TarifaConfigRead(BaseModel):
 class TarifaConfigUpdate(BaseModel):
     tarifa_dia_hospitalizacion: Optional[float] = None
     tarifa_dia_uci: Optional[float] = None
+    tarifa_dia_intermedio: Optional[float] = None
     porcentaje_glosas_historico: Optional[float] = None
     glosa_evolucion_porcentaje: Optional[float] = None
     valor_promedio_glosa: Optional[float] = None
     institucion_nombre: Optional[str] = None
+
+
+# ─── EPS Contratos ────────────────────────────────────────────────────────────
+
+from datetime import date as date_type  # noqa: E402
+
+
+class EPSContratoRead(BaseModel):
+    id: str
+    nombre_eps: str
+    tarifa_especial: Optional[float]
+    vigencia_desde: date_type
+    vigencia_hasta: date_type
+    notas: Optional[str]
+    activo: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EPSContratoCreate(BaseModel):
+    nombre_eps: str
+    tarifa_especial: Optional[float] = None
+    vigencia_desde: date_type
+    vigencia_hasta: date_type
+    notas: Optional[str] = None
+    activo: bool = True
+
+
+class EPSContratoUpdate(BaseModel):
+    nombre_eps: Optional[str] = None
+    tarifa_especial: Optional[float] = None
+    vigencia_desde: Optional[date_type] = None
+    vigencia_hasta: Optional[date_type] = None
+    notas: Optional[str] = None
+    activo: Optional[bool] = None
+
+
+# ─── Servicios Hospitalarios ──────────────────────────────────────────────────
+
+
+class ServicioRead(BaseModel):
+    id: str
+    nombre: str
+    medico_jefe: Optional[str]
+    correo_notificaciones: Optional[str]
+    activo: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ServicioCreate(BaseModel):
+    nombre: str
+    medico_jefe: Optional[str] = None
+    correo_notificaciones: Optional[str] = None
+    activo: bool = True
+
+
+class ServicioUpdate(BaseModel):
+    nombre: Optional[str] = None
+    medico_jefe: Optional[str] = None
+    correo_notificaciones: Optional[str] = None
+    activo: Optional[bool] = None
+
+
+# ─── Parámetros del Sistema ──────────────────────────────────────────────────
+
+
+class SistemaParamsRead(BaseModel):
+    llm_model: str
+    llm_max_tokens: int
+    openai_key_configured: bool
+    openai_key_preview: str
+    max_pdfs_simultaneos: int
+    retencion_datos_dias: int
+    anonimizacion_activa: bool
 
 
 class DashboardFinanciero(BaseModel):

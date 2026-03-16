@@ -12,6 +12,8 @@ import AppPage from "./pages/AppPage";
 import DashboardPage from "./pages/DashboardPage";
 import ReporteIndividualPage from "./pages/ReporteIndividualPage";
 import CuadroControlPage from "./pages/CuadroControlPage";
+import ConfiguracionPage from "./pages/ConfiguracionPage";
+import UsuariosPage from "./pages/UsuariosPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -50,6 +52,16 @@ const App = () => (
             <Route path="/patients/:id/report" element={
               <ProtectedRoute>
                 <ReporteIndividualPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/configuracion" element={
+              <ProtectedRoute>
+                <ConfiguracionPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/usuarios" element={
+              <ProtectedRoute>
+                <UsuariosPage />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />

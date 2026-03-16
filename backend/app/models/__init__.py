@@ -4,6 +4,9 @@ from app.models.user import User, AppRole
 from app.models.audit import AuditSession, AuditFinding, AuditModule, DocumentStatus
 from app.models.tarifa import TarifaConfig
 from app.models.recommendation import Recommendation
+from app.models.eps_contrato import EPSContrato
+from app.models.servicio_hospitalario import ServicioHospitalario
+from app.models.notification import Notification
 
 __all__ = [
     "PatientCase",
@@ -17,4 +20,7 @@ __all__ = [
     "DocumentStatus",
     "TarifaConfig",
     "Recommendation",
+    "EPSContrato",
+    "ServicioHospitalario",
+    "Notification",
 ]

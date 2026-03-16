@@ -19,10 +19,15 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class UserResetPassword(BaseModel):
+    new_password: str
+
+
 class UserRead(UserBase):
     id: str
     is_active: bool
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 

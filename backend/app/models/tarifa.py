@@ -14,6 +14,7 @@ class TarifaConfig(Base):
     # Tarifas por día de hospitalización
     tarifa_dia_hospitalizacion: Mapped[float] = mapped_column(Float, default=350000.0, nullable=False)
     tarifa_dia_uci: Mapped[float] = mapped_column(Float, default=1200000.0, nullable=False)
+    tarifa_dia_intermedio: Mapped[float] = mapped_column(Float, default=600000.0, nullable=False)
     
     # Porcentaje promedio de glosas aceptadas históricamente
     porcentaje_glosas_historico: Mapped[float] = mapped_column(Float, default=15.0, nullable=False)

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/components/RoleGuard';
 import { useProcessing } from '@/contexts/ProcessingContext';
+import NotificationBadge from '@/components/NotificationBadge';
 import {
   Sheet,
   SheetContent,
@@ -29,6 +30,8 @@ import {
   Loader2,
   FileText,
   CheckCircle2,
+  Settings,
+  Users,
 } from 'lucide-react';
 
 export type AppView = 'upload' | 'results' | 'control';
@@ -128,6 +131,22 @@ export default function AppNavbar({ currentView, onViewChange, title, extraActio
       active: currentPath === '/dashboard',
       visible: permissions.canViewDashboard,
     },
+    {
+      label: 'Configuración',
+      icon: <Settings className="h-4 w-4" />,
+      description: 'Tarifas, EPS y servicios',
+      action: () => handleNav('/configuracion'),
+      active: currentPath === '/configuracion',
+      visible: permissions.canConfigureSystem || permissions.canViewDashboard,
+    },
+    {
+      label: 'Usuarios',
+      icon: <Users className="h-4 w-4" />,
+      description: 'Administrar cuentas de usuario',
+      action: () => handleNav('/usuarios'),
+      active: currentPath === '/usuarios',
+      visible: permissions.canManageUsers,
+    },
   ];
 
   return (
@@ -213,8 +232,9 @@ export default function AppNavbar({ currentView, onViewChange, title, extraActio
         </div>
       </div>
 
-      {/* Derecha: indicador de análisis en segundo plano + acciones extra */}
+      {/* Derecha: notificaciones + indicador de análisis en segundo plano + acciones extra */}
       <div className="flex items-center gap-2">
+        <NotificationBadge />
         {activeAnalyses.length > 0 && (
           <Popover>
             <PopoverTrigger asChild>
