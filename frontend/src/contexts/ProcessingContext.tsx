@@ -7,7 +7,7 @@
  *   para que UploadScreen y AppPage reaccionen.
  */
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { processingApi, type AiProgress } from '@/lib/api';
+import { processingApi, getToken, type AiProgress } from '@/lib/api';
 import { toast } from 'sonner';
 
 export interface ActiveAnalysis {
@@ -61,20 +61,42 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
     setProgress(prev => { const n = { ...prev }; delete n[sessionId]; return n; });
   }, []);
 
-  // Polling: corre siempre que haya al menos un análisis activo
+  // Polling: corre siempre que haya al menos un análisis activo y el usuario esté autenticado
   useEffect(() => {
     if (activeAnalyses.length === 0) {
       if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
       return;
     }
 
+    // Sin token no tiene sentido hacer polling — limpiar sesiones huérfanas
+    if (!getToken()) {
+      setActiveAnalyses([]);
+      setProgress({});
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+      return;
+    }
+
     const poll = async () => {
-      // Snapshot para evitar estado stale
+      // Leer snapshot sin setActiveAnalyses para no forzar re-render innecesario
       setActiveAnalyses(current => {
-        current.forEach(async (analysis) => {
+        // Lanzar peticiones en paralelo fuera del setter
+        Promise.all(current.map(async (analysis) => {
           try {
             const p = await processingApi.getProgress(analysis.sessionId);
-            setProgress(prev => ({ ...prev, [analysis.sessionId]: p }));
+
+            // Solo actualizar estado si algo cambió (evita re-renders sin cambios)
+            setProgress(prev => {
+              const existing = prev[analysis.sessionId];
+              if (
+                existing &&
+                existing.status === p.status &&
+                existing.ai_chunks_done === p.ai_chunks_done &&
+                existing.ai_chunks_total === p.ai_chunks_total
+              ) {
+                return prev; // sin cambio → mismo objeto → sin re-render
+              }
+              return { ...prev, [analysis.sessionId]: p };
+            });
 
             if (p.status === 'listo') {
               toast.success(`✅ Análisis completado: ${analysis.fileName}`);
@@ -86,7 +108,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
               removeAnalysis(analysis.sessionId);
             }
           } catch { /* error de red transitorio — ignorar */ }
-        });
+        }));
         return current; // no mutamos el estado aquí
       });
     };

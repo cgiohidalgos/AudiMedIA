@@ -254,6 +254,9 @@ export const processingApi = {
 
   getProgress: (sessionId: string) =>
     request<AiProgress>(`/processing/${sessionId}/progress`),
+
+  cancel: (sessionId: string) =>
+    request<{ ok: boolean }>(`/processing/${sessionId}`, { method: 'DELETE' }),
 };
 
 // ─── Pacientes ───────────────────────────────────────────────────────────────
@@ -349,6 +352,8 @@ export interface ResetResponse {
 
 export const patientsApi = {
   list: () => request<PatientSummary[]>('/patients/'),
+
+  listWithFindings: () => request<AuditSummary[]>('/patients/with-findings'),
 
   get: (id: string) => request<PatientSummary>(`/patients/${id}`),
 

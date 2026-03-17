@@ -87,9 +87,10 @@ const AppPage = () => {
     const fetchPatients = async () => {
       try {
         setIsLoadingPatients(true);
-        const summaries = await patientsApi.list();
+        // Una sola llamada devuelve todos los pacientes con sus hallazgos (2 queries en BD)
+        const allAudits = await patientsApi.listWithFindings();
 
-        if (summaries.length === 0) {
+        if (allAudits.length === 0) {
           setPatients([]);
           return;
         }
@@ -97,21 +98,10 @@ const AppPage = () => {
         // Pacientes encontrados — detener polling
         setPollingForUpload(false);
 
-        const patientsWithDetails = await Promise.all(
-          summaries.map(async (summary) => {
-            try {
-              const auditData = await patientsApi.audit(summary.id);
-              return mapAuditToPatient(auditData);
-            } catch (error) {
-              console.error(`Error fetching audit for patient ${summary.id}:`, error);
-              return mapSummaryToPatient(summary);
-            }
-          })
-        );
-
+        const patientsWithDetails = allAudits.map(mapAuditToPatient);
         setPatients(patientsWithDetails);
         if (patientsWithDetails.length > 0) {
-          setSelectedPatientId(patientsWithDetails[0].id);
+          setSelectedPatientId(prev => prev || patientsWithDetails[0].id);
         }
       } catch (error) {
         console.error('Error fetching patients:', error);
@@ -148,7 +138,7 @@ const AppPage = () => {
     return {
       id: audit.paciente.id,
       label: audit.paciente.label || 'N/A',
-      cama: 'Cama N/A', // Not in audit response
+      cama: (audit.paciente as any).cama || 'N/A',
       edad: audit.paciente.edad,
       sexo: audit.paciente.sexo,
       diagnosticoPrincipal: audit.paciente.diagnostico_principal || 'N/A',

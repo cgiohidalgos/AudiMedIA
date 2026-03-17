@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/components/RoleGuard';
@@ -33,7 +33,10 @@ import {
   Settings,
   Users,
   Stethoscope,
+  X,
 } from 'lucide-react';
+import { processingApi } from '@/lib/api';
+import { toast } from 'sonner';
 
 export type AppView = 'upload' | 'results' | 'control';
 
@@ -54,7 +57,14 @@ export default function AppNavbar({ currentView, onViewChange, title, extraActio
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
-  const { activeAnalyses, progress } = useProcessing();
+  const { activeAnalyses, progress, removeAnalysis } = useProcessing();
+
+  // Cuando termina un análisis → ir automáticamente a "Ver análisis"
+  useEffect(() => {
+    const onComplete = () => navigate('/app', { state: { view: 'results' } });
+    window.addEventListener('processingComplete', onComplete);
+    return () => window.removeEventListener('processingComplete', onComplete);
+  }, [navigate]);
 
   const roleLabel: Record<string, string> = {
     admin: 'Administrador',
@@ -294,7 +304,7 @@ export default function AppNavbar({ currentView, onViewChange, title, extraActio
 
                   return (
                     <div key={analysis.sessionId} className="px-4 py-3 space-y-2">
-                      {/* Fila superior: icono + nombre + badge */}
+                      {/* Fila superior: icono + nombre + badge + cancelar */}
                       <div className="flex items-center gap-2">
                         <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <span className="text-xs font-medium text-foreground truncate flex-1">
@@ -310,6 +320,19 @@ export default function AppNavbar({ currentView, onViewChange, title, extraActio
                             En cola
                           </span>
                         )}
+                        <button
+                          onClick={async () => {
+                            try {
+                              await processingApi.cancel(analysis.sessionId);
+                            } catch { /* ignorar si ya terminó */ }
+                            removeAnalysis(analysis.sessionId);
+                            toast.info(`Análisis cancelado: ${analysis.fileName}`);
+                          }}
+                          className="ml-1 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                          title="Cancelar análisis"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </div>
 
                       {/* Barra de progreso */}

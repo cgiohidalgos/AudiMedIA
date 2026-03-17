@@ -14,19 +14,36 @@ services:
       - "8000:8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-  # ─── Frontend React/Vite ──────────────────────────────────────────
-  frontend:
-    image: node:20-alpine
-    container_name: audiomedia_frontend
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+  # ─── Nginx Reverse Proxy (sirve frontend estático + proxy API) ───
+  nginx:
+    image: nginx:alpine
+    container_name: audiomedia_nginx
     ports:
-      - "5173:5173"
-    command: sh -c "npm install && npm run dev -- --host --port 5173"
-    environment:
-      VITE_API_URL: http://localhost:8000/api/v1
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    depends_on:
+      - backend
+    networks:
+      - default
+      - adat_network
+    restart: unless-stopped
 
 volumes:
   uploads_data:
+  certbot_www:
+    external: true
+    name: audimedia_certbot_www
+  certbot_conf:
+    external: true
+    name: audimedia_certbot_conf
+
+networks:
+  default:
+  adat_network:
+    external: true
+    name: testct_adat_network

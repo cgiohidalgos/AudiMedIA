@@ -139,31 +139,41 @@ def _merge_clinical_dicts(base: dict, other: dict) -> dict:
     return merged
 
 
-def _extract_with_cohere(chunk: str, idx: int) -> dict:
+def _extract_with_cohere(chunk: str, idx: int, max_retries: int = 2) -> dict:
     """Extracción síncrona con Cohere Command R. Se ejecuta en thread executor."""
     import cohere
-    co = cohere.Client(api_key=settings.COHERE_API_KEY)
-    try:
-        response = co.chat(
-            model=settings.COHERE_CHAT_MODEL,
-            message=EXTRACTION_PROMPT.format(text=chunk),
-            preamble=(
-                "Eres un auditor médico experto en normativa colombiana (CIE10, CUPS, Ley 1438). "
-                "IMPORTANTE: Responde ÚNICAMENTE con el JSON solicitado, sin texto adicional ni bloques markdown."
-            ),
-            temperature=0,
-        )
-        text = response.text
-        # Extraer bloque JSON del texto
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        raw = match.group() if match else text
-        return json.loads(_try_fix_json_string(raw))
-    except json.JSONDecodeError as e:
-        logger.error(f"  ❌ Fragmento {idx} - JSON inválido de Cohere: {e}")
-        return {"error": f"JSON inválido en fragmento {idx}: {str(e)}"}
-    except Exception as e:
-        logger.error(f"  ❌ Fragmento {idx} - Error Cohere: {type(e).__name__}: {str(e)}")
-        return {"error": f"Error Cohere en fragmento {idx}: {str(e)}"}
+    import time
+    co = cohere.Client(api_key=settings.COHERE_API_KEY, timeout=60)
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = co.chat(
+                model=settings.COHERE_CHAT_MODEL,
+                message=EXTRACTION_PROMPT.format(text=chunk),
+                preamble=(
+                    "Eres un auditor médico experto en normativa colombiana (CIE10, CUPS, Ley 1438). "
+                    "IMPORTANTE: Responde ÚNICAMENTE con el JSON solicitado, sin texto adicional ni bloques markdown."
+                ),
+                temperature=0,
+            )
+            text = response.text
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            raw = match.group() if match else text
+            return json.loads(_try_fix_json_string(raw))
+        except json.JSONDecodeError as e:
+            last_error = e
+            logger.warning(f"  ⚠️ Fragmento {idx} - JSON inválido de Cohere (intento {attempt}/{max_retries}): {e}")
+            if attempt < max_retries:
+                time.sleep(1)
+        except Exception as e:
+            last_error = e
+            logger.warning(f"  ⚠️ Fragmento {idx} - Error Cohere (intento {attempt}/{max_retries}): {type(e).__name__}: {e}")
+            if attempt < max_retries:
+                time.sleep(2)
+
+    # Fallback a OpenAI solo si Cohere falló todos los reintentos
+    logger.warning(f"  🔄 Fragmento {idx} - Cohere falló {max_retries} veces, usando OpenAI como fallback")
+    return {"_needs_openai_fallback": True, "chunk": chunk, "idx": idx}
 
 
 async def extract_clinical_variables(text: str, progress_callback: Optional[Callable[[float], Any]] = None) -> dict:
@@ -180,7 +190,7 @@ async def extract_clinical_variables(text: str, progress_callback: Optional[Call
         logger.info(f"🔑 API Key configurada: {settings.OPENAI_API_KEY[:20]}...")
         logger.info(f"🤖 Modelo: {settings.LLM_MODEL}")
 
-        # Fragmentos de ~10,000 chars (~2,500 tokens) para no superar el TPM de 30,000
+        # Fragmentos de ~10,000 chars (~2,500 tokens) para respuesta rápida de Cohere
         max_chunk = 10000
         chunks = []
         start = 0
@@ -198,7 +208,25 @@ async def extract_clinical_variables(text: str, progress_callback: Optional[Call
             if settings.EXTRACTION_PROVIDER == "cohere":
                 logger.info(f"🔵 Fragmento {idx}/{len(chunks)} → Cohere {settings.COHERE_CHAT_MODEL} (size {len(chunk)})")
                 loop = asyncio.get_event_loop()
-                return await loop.run_in_executor(None, _extract_with_cohere, chunk, idx)
+                result = await loop.run_in_executor(None, _extract_with_cohere, chunk, idx)
+                # Fallback a OpenAI si Cohere no pudo parsear JSON tras reintentos
+                if result.get("_needs_openai_fallback"):
+                    logger.info(f"  🔄 Fragmento {idx} → fallback OpenAI {settings.LLM_MODEL}")
+                    try:
+                        response = await client.chat.completions.create(
+                            model=settings.LLM_MODEL,
+                            messages=[
+                                {"role": "system", "content": "Eres un auditor médico experto en normativa colombiana (CIE10, CUPS, Ley 1438)."},
+                                {"role": "user", "content": EXTRACTION_PROMPT.format(text=result["chunk"])},
+                            ],
+                            temperature=0,
+                            response_format={"type": "json_object"},
+                        )
+                        return json.loads(response.choices[0].message.content)
+                    except Exception as e:
+                        logger.error(f"  ❌ Fragmento {idx} - Fallback OpenAI también falló: {e}")
+                        return {"error": f"Error en fragmento {idx}: {str(e)}"}
+                return result
 
             logger.info(f"🔍 Fragmento {idx}/{len(chunks)} iniciando (size {len(chunk)})")
             max_retries = 4
@@ -232,15 +260,9 @@ async def extract_clinical_variables(text: str, progress_callback: Optional[Call
                     return {"error": f"Error en fragmento {idx}: {str(e)}"}
             return {"error": f"Fragmento {idx}: máximo de reintentos agotado"}
 
-        # Ejecutar fragmentos SECUENCIALMENTE para respetar el rate limit de TPM
-        logger.info(f"🔍 Procesando {len(chunks)} fragmento(s) secuencialmente para respetar rate limits")
-        results = []
-        for i, c in enumerate(chunks):
-            result = await _call_chunk(c, i + 1)
-            results.append(result)
-            if i < len(chunks) - 1:
-                # Cohere tolera más concurrencia; OpenAI necesita pausa para TPM
-                await asyncio.sleep(0.5 if settings.EXTRACTION_PROVIDER == "cohere" else 2)
+        # Ejecutar fragmentos en paralelo (OpenAI soporta alta concurrencia)
+        logger.info(f"🔍 Procesando {len(chunks)} fragmento(s) en paralelo")
+        results = list(await asyncio.gather(*[_call_chunk(c, i + 1) for i, c in enumerate(chunks)]))
 
         combined: dict = {}
         errors = []

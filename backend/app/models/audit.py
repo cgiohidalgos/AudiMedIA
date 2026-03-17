@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, Integer, Float, Text, Boolean, func, ForeignKey
+from sqlalchemy import String, DateTime, Integer, Float, Text, Boolean, func, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 from app.models.patient import JSONColumn
@@ -28,6 +28,11 @@ class DocumentStatus(str, enum.Enum):
 class AuditSession(Base):
     """Sesión de auditoría incremental por paciente."""
     __tablename__ = "auditoria_sesion"
+    __table_args__ = (
+        Index("ix_auditoria_sesion_patient_id", "patient_id"),
+        Index("ix_auditoria_sesion_user_id", "user_id"),
+        Index("ix_auditoria_sesion_status", "status"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     patient_id: Mapped[str] = mapped_column(String(36), ForeignKey("patient_cases.id"), nullable=True)
@@ -56,6 +61,9 @@ class AuditSession(Base):
 class DocumentChunk(Base):
     """Fragmento de texto extraído de un PDF. Unidad base para RAG."""
     __tablename__ = "document_chunks"
+    __table_args__ = (
+        Index("ix_document_chunks_session_id", "session_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     session_id: Mapped[str] = mapped_column(String(36), ForeignKey("auditoria_sesion.id"), nullable=False)
@@ -73,6 +81,10 @@ class DocumentChunk(Base):
 class AuditFinding(Base):
     """Hallazgos individuales de la auditoría clínica."""
     __tablename__ = "audit_findings"
+    __table_args__ = (
+        Index("ix_audit_findings_patient_id", "patient_id"),
+        Index("ix_audit_findings_patient_estado", "patient_id", "estado"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     patient_id: Mapped[str] = mapped_column(String(36), ForeignKey("patient_cases.id"), nullable=False)
@@ -107,6 +119,9 @@ class AuditFinding(Base):
 class ChatMessage(Base):
     """Historial del chat con la historia clínica."""
     __tablename__ = "chat_messages"
+    __table_args__ = (
+        Index("ix_chat_messages_patient_id", "patient_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     patient_id: Mapped[str] = mapped_column(String(36), ForeignKey("patient_cases.id"), nullable=False)

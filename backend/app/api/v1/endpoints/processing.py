@@ -31,8 +31,8 @@ from app.services.ai.audit_modules import run_all_modules, calculate_risk, gener
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/processing", tags=["processing"])
 
-# Chunks de BD por lote enviado a la IA (5 chunks à ~400 palabras ≈ 8k chars → 1 llamada OpenAI por lote)
-BATCH_SIZE = 5
+# Chunks de BD por lote (5 chunks × ~400 palabras ≈ 9-10k chars — límite probado con Cohere)
+BATCH_SIZE = 3
 # Lotes procesados por ronda (el frontend para y muestra resultados parciales)
 ROUND_SIZE = 20
 
@@ -164,11 +164,14 @@ async def _do_extract(session_id: str):
 
 # ─── Background task: procesa TODOS los lotes internamente ──────────────────
 
+PARALLEL_BATCHES = 30  # lotes simultáneos con OpenAI
+
 async def _process_all_batches_bg(session_id: str, user_id: str):
     """
-    Tarea en segundo plano: procesa todos los lotes de IA sin intervención del frontend.
-    El frontend puede navegar libremente y sólo hace polling a /progress.
+    Tarea en segundo plano: procesa todos los lotes de IA en PARALELO.
+    Semáforo de PARALLEL_BATCHES limita la concurrencia para no superar rate limits.
     """
+    import asyncio
     logger.info(f"🚀 [BG] Iniciando procesamiento en segundo plano para sesión {session_id}")
     async with AsyncSessionLocal() as db:
         try:
@@ -195,25 +198,40 @@ async def _process_all_batches_bg(session_id: str, user_id: str):
                 except json.JSONDecodeError:
                     merged = {}
 
+            semaphore = asyncio.Semaphore(PARALLEL_BATCHES)
+            results: dict[int, dict] = {}
+
+            async def _process_batch(batch_idx: int):
+                async with semaphore:
+                    batch_chunks = chunks[batch_idx * BATCH_SIZE: (batch_idx + 1) * BATCH_SIZE]
+                    batch_text = "\n\n".join(f"[Página {c.page_number}]\n{c.text}" for c in batch_chunks)
+                    logger.info(
+                        f"🤖 [BG] Sesión {session_id}: lote {batch_idx + 1}/{total_batches} "
+                        f"({len(batch_chunks)} chunks, {len(batch_text):,} chars)"
+                    )
+                    partial = await extract_clinical_variables(batch_text)
+                    results[batch_idx] = partial
+                    # Actualizar contador en BD a medida que terminan
+                    async with AsyncSessionLocal() as db2:
+                        r2 = await db2.execute(select(AuditSession).where(AuditSession.id == session_id))
+                        s2 = r2.scalar_one_or_none()
+                        if s2:
+                            s2.ai_chunks_done = (s2.ai_chunks_done or 0) + 1
+                            await db2.commit()
+
+            await asyncio.gather(*[_process_batch(i) for i in range(start_batch, total_batches)])
+
+            # Combinar resultados en orden
             for batch_idx in range(start_batch, total_batches):
-                batch_chunks = chunks[batch_idx * BATCH_SIZE: (batch_idx + 1) * BATCH_SIZE]
-                batch_text = "\n\n".join(f"[Página {c.page_number}]\n{c.text}" for c in batch_chunks)
-
-                logger.info(
-                    f"🤖 [BG] Sesión {session_id}: lote {batch_idx + 1}/{total_batches} "
-                    f"({len(batch_chunks)} chunks, {len(batch_text):,} chars)"
-                )
-
-                partial = await extract_clinical_variables(batch_text)
-
+                partial = results.get(batch_idx, {})
                 if "error" not in partial:
                     merged = _merge_clinical_dicts(merged, partial)
                 else:
                     logger.warning(f"⚠️ [BG] Lote {batch_idx + 1} retornó error: {partial.get('error')}")
 
-                session.clinical_data_partial = json.dumps(merged, ensure_ascii=False)
-                session.ai_chunks_done = batch_idx + 1
-                await db.commit()
+            session.clinical_data_partial = json.dumps(merged, ensure_ascii=False)
+            session.ai_chunks_done = total_batches
+            await db.commit()
 
             # Finalizar sesión
             if merged:
@@ -566,6 +584,25 @@ async def process_next_batch(
         status=session.status,
         message=f"Lote {batch_idx + 1}/{total_batches} procesado.",
     )
+
+@router.delete("/{session_id}", status_code=200)
+async def cancel_processing(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Cancela un análisis en curso marcando la sesión como 'error' para detener el background task."""
+    result = await db.execute(select(AuditSession).where(AuditSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    if session.status not in (DocumentStatus.analizando.value, DocumentStatus.extrayendo.value):
+        raise HTTPException(status_code=400, detail=f"No se puede cancelar en estado '{session.status}'")
+    session.status = DocumentStatus.error.value
+    await db.commit()
+    logger.info(f"🚫 Sesión {session_id} cancelada por el usuario")
+    return {"ok": True}
+
 
 @router.get("/{session_id}/progress")
 async def get_progress(

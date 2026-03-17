@@ -13,10 +13,10 @@ const statusLabels: Record<FileStatus, string> = {
   cargando: 'Subiendo...',
   subido: 'PDF guardado',
   extrayendo: 'Extrayendo texto...',
-  extraido: 'Texto extraÃ­do',
+  extraido: 'Texto extraído',
   anonimizando: 'Anonimizando...',
   analizando: 'Analizando con IA...',
-  listo: 'AnÃ¡lisis completo',
+  listo: 'Análisis completo',
   error: 'Error',
 };
 
@@ -198,7 +198,7 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
       const finalStatus = await pollUntilStable(sessionId, fileId, ['extraido']);
 
       if (finalStatus === 'extraido') {
-        toast.success('Texto extraÃ­do y guardado en chunks. Ahora analiza con IA.');
+        toast.success('Texto extraído y guardado en chunks. Ahora analiza con IA.');
       } else {
         toast.error('Error al extraer el texto del PDF.');
       }
@@ -280,10 +280,10 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
           Audi Med IA
         </h1>
         <p className="text-sm text-muted-foreground text-center mb-8 font-body">
-          Sistema de AuditorÃ­a MÃ©dica basada en Inteligencia Artificial
+          Sistema de Auditoría Médica basada en Inteligencia Artificial
         </p>
 
-        {/* Drop zone â€” solo visible si aÃºn no se ha subido nada */}
+        {/* Drop zone — solo visible si aún no se ha subido nada */}
         {files.every(f => f.status === 'idle') && (
           <div
             className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer ${
@@ -309,10 +309,10 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
           >
             <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
             <p className="font-body text-sm text-foreground font-medium">
-              Arrastre archivos PDF aquÃ­ o haga clic para seleccionar
+              Arrastre archivos PDF aquí o haga clic para seleccionar
             </p>
             <p className="font-body text-xs text-muted-foreground mt-1">
-              MÃ¡ximo 5 archivos Â· PDF digital o escaneado
+              Máximo 5 archivos · PDF digital o escaneado
             </p>
           </div>
         )}
@@ -432,7 +432,7 @@ const UploadScreen = ({ onStartAnalysis }: UploadScreenProps) => {
           </div>
         )}
 
-        {/* BotÃ³n principal: Subir PDFs (solo etapa 1) */}
+        {/* Botón principal: Subir PDFs (solo etapa 1) */}
         {canUpload && (
           <div className="mt-6 flex justify-center">
             <Button onClick={handleUpload} className="font-body px-8">

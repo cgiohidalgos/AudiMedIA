@@ -13,7 +13,7 @@ interface ChatPanelProps {
   patientLabel: string;
   allPatientIds?: string[];
   onClose: () => void;
-  /** Callback invocado al hacer click en una referencia de pÃ¡gina. Abre el visor en esa pÃ¡gina. */
+  /** Callback invocado al hacer click en una referencia de página. Abre el visor en esa página. */
   onViewPage?: (page: number) => void;
 }
 
@@ -26,11 +26,11 @@ interface ChatMessageLocal {
 }
 
 const suggestions = [
-  'Â¿Hay evoluciÃ³n de hoy?',
-  'Â¿EstÃ¡ justificada la estancia?',
-  'Â¿Faltan reportes de estudios?',
-  'Â¿Hay medicamentos sin indicaciÃ³n?',
-  'Â¿CuÃ¡l es el riesgo de glosa?',
+  '¿Hay evolución de hoy?',
+  '¿Está justificada la estancia?',
+  '¿Faltan reportes de estudios?',
+  '¿Hay medicamentos sin indicación?',
+  '¿Cuál es el riesgo de glosa?',
 ];
 
 type ChatMode = 'single' | 'multi' | 'rag';
@@ -67,7 +67,7 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
         if (history.length === 0) {
           setMessages([{
             role: 'assistant',
-            content: `Chat activo para ${patientLabel}. Puede consultar cualquier aspecto de la historia clÃ­nica. Las respuestas incluirÃ¡n referencia a la pÃ¡gina del documento fuente.\n\nâš ï¸ Esta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisiÃ³n clÃ­nica profesional.`,
+            content: `Chat activo para ${patientLabel}. Puede consultar cualquier aspecto de la historia clínica. Las respuestas incluirán referencia a la página del documento fuente.\n\n⚠️ Esta respuesta es generada por IA como apoyo al criterio del auditor y no reemplaza la revisión clínica profesional.`,
           }]);
         } else {
           setMessages(history.map(m => ({
@@ -98,8 +98,8 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
 
     try {
       if (chatMode === 'rag') {
-        if (!sessionId) throw new Error('SesiÃ³n no encontrada. Extrae el texto del PDF primero.');
-        // Construir historial para Cohere (Ãºltimos 8 intercambios)
+        if (!sessionId) throw new Error('Sesión no encontrada. Extrae el texto del PDF primero.');
+        // Construir historial para Cohere (últimos 8 intercambios)
         const history = messages
           .filter(m => m.role === 'user' || m.role === 'assistant')
           .slice(-8)
@@ -209,8 +209,8 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
           {chatMode === 'multi'
             ? `Todas las historias (${allPatientIds?.length})`
             : chatMode === 'rag'
-            ? `RAG â€” ${patientLabel}`
-            : `Chat â€” ${patientLabel}`}
+            ? `RAG — ${patientLabel}`
+            : `Chat — ${patientLabel}`}
         </h2>
         <div className="flex items-center gap-1 shrink-0">
           <DropdownMenu>
@@ -258,7 +258,7 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
               className={`flex-1 flex items-center justify-center gap-1 py-1 font-body transition-colors ${
                 chatMode === 'multi' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'
               }`}
-              title="Chat sobre mÃºltiples pacientes"
+              title="Chat sobre múltiples pacientes"
             >
               <Users className="h-3 w-3" />
               Todos
@@ -281,7 +281,7 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
       {chatMode === 'rag' && (
         <div className="px-4 py-2 bg-blue-50 border-b border-blue-200 text-[10px] text-blue-700 font-body">
           Buscando en el <strong>texto original del PDF</strong> con Cohere Command R + Rerank.
-          {!sessionId && <span className="text-red-600"> âš ï¸ Extrae el texto primero.</span>}
+          {!sessionId && <span className="text-red-600"> ⚠️ Extrae el texto primero.</span>}
         </div>
       )}
 
@@ -312,7 +312,7 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
               }`}>
                 {m.content}
               </div>
-              {/* Referencias modo clÃ¡sico */}
+              {/* Referencias modo clásico */}
               {m.role === 'assistant' && m.referencias && m.referencias.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {[...new Set(m.referencias.map(r => r.pagina))].sort((a, b) => a - b).map(page => (
@@ -323,11 +323,11 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
                         className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 rounded px-2 py-0.5 font-medium font-body flex items-center gap-1 transition-colors"
                       >
                         <FileText className="h-2.5 w-2.5" />
-                        pÃ¡g. {page}
+                        pág. {page}
                       </button>
                     ) : (
                       <span key={page} className="text-xs bg-blue-100 text-blue-700 rounded px-2 py-0.5 font-medium font-body">
-                        pÃ¡g. {page}
+                        pág. {page}
                       </span>
                     )
                   ))}
@@ -348,10 +348,10 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
                             className="text-blue-700 hover:underline font-medium flex items-center gap-1"
                           >
                             <FileText className="h-2.5 w-2.5" />
-                            pÃ¡g. {r.page_number}
+                            pág. {r.page_number}
                           </button>
                         ) : (
-                          <span className="text-blue-700 font-medium">pÃ¡g. {r.page_number}</span>
+                          <span className="text-blue-700 font-medium">pág. {r.page_number}</span>
                         )}
                         <span className="text-muted-foreground">score: {r.relevance_score.toFixed(2)}</span>
                       </div>

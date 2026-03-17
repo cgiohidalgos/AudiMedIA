@@ -2,7 +2,7 @@ import os
 import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, and_
 from typing import List, Optional
 from datetime import date
 from app.db.session import get_db
@@ -25,6 +25,90 @@ async def list_patients(
 ):
     result = await db.execute(select(PatientCase).order_by(PatientCase.created_at.desc()))
     return result.scalars().all()
+
+
+@router.get("/with-findings", response_model=List[AuditSummaryResponse])
+async def list_patients_with_findings(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """
+    Devuelve todos los pacientes con sus hallazgos en 2 queries (sin N+1).
+    Reemplaza la secuencia list() + N×audit() del frontend.
+    """
+    # Query 1: todos los pacientes
+    p_result = await db.execute(select(PatientCase).order_by(PatientCase.created_at.desc()))
+    patients = p_result.scalars().all()
+
+    if not patients:
+        return []
+
+    patient_ids = [p.id for p in patients]
+
+    # Query 2: todos los hallazgos de esos pacientes de una vez
+    f_result = await db.execute(
+        select(AuditFinding)
+        .where(AuditFinding.patient_id.in_(patient_ids))
+        .order_by(AuditFinding.riesgo.desc(), AuditFinding.valor_glosa_estimado.desc())
+    )
+    all_findings = f_result.scalars().all()
+
+    # Agrupar hallazgos por patient_id en Python (O(n), sin queries extra)
+    from collections import defaultdict
+    findings_by_patient: dict = defaultdict(list)
+    for f in all_findings:
+        findings_by_patient[f.patient_id].append(f)
+
+    response = []
+    for patient in patients:
+        findings = findings_by_patient[patient.id]
+        riesgo_global = patient.riesgo_auditoria or "pending"
+
+        if riesgo_global == "alto":
+            recomendacion = "Se requiere revisión inmediata por el comité de auditoría. Hallazgos críticos detectados."
+        elif riesgo_global == "medio":
+            recomendacion = "Requiere seguimiento y aclaraciones documentales en las próximas 48 horas."
+        elif riesgo_global == "pending":
+            recomendacion = "Auditoría pendiente de procesamiento."
+        else:
+            recomendacion = "Caso de bajo riesgo. Revisión de rutina recomendada."
+
+        hallazgos_por_riesgo = {"alto": 0, "medio": 0, "bajo": 0}
+        hallazgos_por_modulo: dict = {}
+        for f in findings:
+            hallazgos_por_riesgo[f.riesgo] = hallazgos_por_riesgo.get(f.riesgo, 0) + 1
+            hallazgos_por_modulo[f.modulo] = hallazgos_por_modulo.get(f.modulo, 0) + 1
+
+        response.append(AuditSummaryResponse(
+            riesgo_global=riesgo_global,
+            total_hallazgos=patient.total_hallazgos,
+            exposicion_glosas=patient.exposicion_glosas,
+            hallazgos_por_riesgo=hallazgos_por_riesgo,
+            hallazgos_por_modulo=hallazgos_por_modulo,
+            hallazgos=findings,
+            recomendacion_general=recomendacion,
+            paciente={
+                "id": patient.id,
+                "label": patient.label,
+                "cama": patient.cama,
+                "edad": patient.edad,
+                "sexo": patient.sexo,
+                "diagnostico_principal": patient.diagnostico_principal,
+                "codigo_cie10": patient.codigo_cie10,
+                "diagnosticos_secundarios": patient.diagnosticos_secundarios,
+                "fecha_ingreso": patient.fecha_ingreso,
+                "fecha_egreso": patient.fecha_egreso,
+                "dias_hospitalizacion": patient.dias_hospitalizacion,
+                "dias_esperados": patient.dias_esperados,
+                "medicamentos": patient.medicamentos,
+                "antecedentes": patient.antecedentes,
+                "estudios_solicitados": patient.estudios_solicitados,
+                "procedimientos": patient.procedimientos,
+                "evoluciones": patient.evoluciones,
+            },
+        ))
+
+    return response
 
 
 @router.get("/control-board", response_model=List[PatientControlBoard])
@@ -53,7 +137,21 @@ async def get_control_board(
     """
     from app.models.audit import AuditSession
 
-    query = select(PatientCase).order_by(PatientCase.created_at.desc())
+    # Subquery: fecha_ultima_auditoria más reciente por patient_id (1 sola query)
+    latest_session_sq = (
+        select(
+            AuditSession.patient_id,
+            func.max(AuditSession.fecha_ultima_auditoria).label("fecha_ultima_auditoria"),
+        )
+        .group_by(AuditSession.patient_id)
+        .subquery()
+    )
+
+    query = (
+        select(PatientCase, latest_session_sq.c.fecha_ultima_auditoria)
+        .outerjoin(latest_session_sq, PatientCase.id == latest_session_sq.c.patient_id)
+        .order_by(PatientCase.created_at.desc())
+    )
 
     if risk_level:
         query = query.where(PatientCase.riesgo_auditoria == risk_level)
@@ -88,11 +186,11 @@ async def get_control_board(
         query = query.where(PatientCase.dias_hospitalizacion <= dias_max)
 
     result = await db.execute(query)
-    patients = result.scalars().all()
+    rows = result.all()  # cada row: (PatientCase, fecha_ultima_auditoria)
 
     control_board = []
 
-    for patient in patients:
+    for patient, fecha_ultima_auditoria in rows:
         estudios_pendientes = []
         if patient.estudios_solicitados:
             for estudio in patient.estudios_solicitados:
@@ -102,15 +200,6 @@ async def get_control_board(
                         nombre_estudio = estudio.get('nombre') or estudio.get('estudio')
                         if nombre_estudio:
                             estudios_pendientes.append(nombre_estudio)
-
-        session_result = await db.execute(
-            select(AuditSession)
-            .where(AuditSession.patient_id == patient.id)
-            .order_by(AuditSession.fecha_ultima_auditoria.desc())
-            .limit(1)
-        )
-        audit_session = session_result.scalar_one_or_none()
-        fecha_ultima_auditoria = audit_session.fecha_ultima_auditoria if audit_session else None
 
         if patient.codigo_cie10 and patient.diagnostico_principal:
             diagnostico = f"{patient.codigo_cie10} - {patient.diagnostico_principal}"

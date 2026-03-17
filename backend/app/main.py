@@ -54,6 +54,23 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await seed_default_users(db)
 
+    # Recuperar sesiones que quedaron en 'analizando' tras un restart
+    import asyncio as _asyncio
+    from sqlalchemy import select as _select
+    from app.models.audit import AuditSession as _AuditSession, DocumentStatus as _DocumentStatus
+    async def _recover():
+        await _asyncio.sleep(2)  # esperar a que el servidor termine de arrancar
+        from app.api.v1.endpoints.processing import _process_all_batches_bg
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(
+                _select(_AuditSession).where(_AuditSession.status == _DocumentStatus.analizando.value)
+            )
+            sessions = r.scalars().all()
+            for s in sessions:
+                logger.info(f"🔁 [STARTUP] Reanudando sesión huérfana: {s.id} (lote {s.ai_chunks_done}/{s.ai_chunks_total})")
+                _asyncio.create_task(_process_all_batches_bg(s.id, s.user_id or ""))
+    _asyncio.create_task(_recover())
+
     yield
     await engine.dispose()
 
