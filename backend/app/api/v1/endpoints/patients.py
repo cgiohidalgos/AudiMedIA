@@ -2,8 +2,9 @@ import os
 import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List
+from sqlalchemy import select, or_, func
+from typing import List, Optional
+from datetime import date
 from app.db.session import get_db
 from app.models.user import User
 from app.models.patient import PatientCase
@@ -28,18 +29,27 @@ async def list_patients(
 
 @router.get("/control-board", response_model=List[PatientControlBoard])
 async def get_control_board(
-    risk_level: str = None,
-    audit_status: str = None,
+    risk_level: Optional[str] = None,
+    audit_status: Optional[str] = None,
+    q: Optional[str] = None,
+    codigo_cie10: Optional[str] = None,
+    fecha_ingreso_desde: Optional[date] = None,
+    fecha_ingreso_hasta: Optional[date] = None,
+    dias_min: Optional[int] = None,
+    dias_max: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     """
     Obtiene el cuadro de control inteligente consolidado.
-    Muestra todos los pacientes con su estado de auditoría en una tabla interactiva.
 
     Filtros opcionales:
     - risk_level: alto, medio, bajo
     - audit_status: pending, processing, completed
+    - q: búsqueda libre (cama, historia, diagnóstico, CIE-10)
+    - codigo_cie10: filtro exacto por código CIE-10
+    - fecha_ingreso_desde / fecha_ingreso_hasta: rango de fecha de ingreso
+    - dias_min / dias_max: rango de días de hospitalización
     """
     from app.models.audit import AuditSession
 
@@ -50,6 +60,32 @@ async def get_control_board(
 
     if audit_status:
         query = query.where(PatientCase.audit_status == audit_status)
+
+    if q:
+        q_pattern = f"%{q}%"
+        query = query.where(
+            or_(
+                PatientCase.cama.ilike(q_pattern),
+                PatientCase.label.ilike(q_pattern),
+                PatientCase.diagnostico_principal.ilike(q_pattern),
+                PatientCase.codigo_cie10.ilike(q_pattern),
+            )
+        )
+
+    if codigo_cie10:
+        query = query.where(PatientCase.codigo_cie10.ilike(f"%{codigo_cie10}%"))
+
+    if fecha_ingreso_desde:
+        query = query.where(PatientCase.fecha_ingreso >= fecha_ingreso_desde)
+
+    if fecha_ingreso_hasta:
+        query = query.where(PatientCase.fecha_ingreso <= fecha_ingreso_hasta)
+
+    if dias_min is not None:
+        query = query.where(PatientCase.dias_hospitalizacion >= dias_min)
+
+    if dias_max is not None:
+        query = query.where(PatientCase.dias_hospitalizacion <= dias_max)
 
     result = await db.execute(query)
     patients = result.scalars().all()
@@ -90,6 +126,8 @@ async def get_control_board(
             cama=patient.cama,
             historia=patient.label,
             diagnostico=diagnostico,
+            codigo_cie10=patient.codigo_cie10,
+            fecha_ingreso=patient.fecha_ingreso,
             dias_hospitalizacion=patient.dias_hospitalizacion or 0,
             dias_esperados=patient.dias_esperados or "N/A",
             estudios_pendientes=estudios_pendientes,

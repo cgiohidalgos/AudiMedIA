@@ -319,6 +319,8 @@ export interface PatientControlBoard {
   cama: string | null;
   historia: string;
   diagnostico: string;
+  codigo_cie10: string | null;
+  fecha_ingreso: string | null;
   dias_hospitalizacion: number;
   dias_esperados: string;
   estudios_pendientes: string[];

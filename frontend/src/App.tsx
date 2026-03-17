@@ -13,8 +13,7 @@ import DashboardPage from "./pages/DashboardPage";
 import ReporteIndividualPage from "./pages/ReporteIndividualPage";
 import CuadroControlPage from "./pages/CuadroControlPage";
 import ConfiguracionPage from "./pages/ConfiguracionPage";
-import UsuariosPage from "./pages/UsuariosPage";
-import NotFound from "./pages/NotFound";
+import UsuariosPage from "./pages/UsuariosPage";import MisPacientesPage from './pages/MisPacientesPage';import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +61,11 @@ const App = () => (
             <Route path="/usuarios" element={
               <ProtectedRoute>
                 <UsuariosPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/mis-pacientes" element={
+              <ProtectedRoute>
+                <MisPacientesPage />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />

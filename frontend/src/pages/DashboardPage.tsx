@@ -5,8 +5,8 @@ import AppNavbar from '@/components/AppNavbar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, FileText, Clock, AlertTriangle, CheckCircle2, Download, LogOut } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, ComposedChart, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { TrendingUp, TrendingDown, DollarSign, FileText, Clock, AlertTriangle, CheckCircle2, Download, LogOut, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getToken } from '@/lib/api';
 
@@ -63,6 +63,9 @@ const DashboardPage = () => {
   const [graficos, setGraficos] = useState<DashboardGraficos | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportingJson, setExportingJson] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -125,7 +128,9 @@ const DashboardPage = () => {
   const formatPercent = (value: number) => `${value.toFixed(1)}%`;
 
   const handleExport = async (formato: 'excel' | 'pdf') => {
+    const setCargando = formato === 'excel' ? setExportingCsv : setExportingJson;
     try {
+      setCargando(true);
       const token = getToken();
       if (!token) {
         toast.error('No está autenticado');
@@ -171,15 +176,18 @@ const DashboardPage = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      toast.success(`Reporte ${formato.toUpperCase()} descargado`);
+      toast.success(`Reporte ${formato === 'excel' ? 'CSV' : 'JSON'} descargado`);
     } catch (error) {
       console.error('Error exporting:', error);
-      toast.error(`Error al exportar ${formato.toUpperCase()}`);
+      toast.error(`Error al exportar ${formato === 'excel' ? 'CSV' : 'JSON'}`);
+    } finally {
+      setCargando(false);
     }
   };
 
   const handleExecutiveReport = async () => {
     try {
+      setExportingPdf(true);
       const token = getToken();
       if (!token) {
         toast.error('No está autenticado');
@@ -211,6 +219,8 @@ const DashboardPage = () => {
     } catch (error) {
       console.error(error);
       toast.error('Error al generar el reporte ejecutivo');
+    } finally {
+      setExportingPdf(false);
     }
   };
 
@@ -252,6 +262,20 @@ const DashboardPage = () => {
         value
       }))
     : [];
+
+  const servicioData = graficos.ahorro_por_servicio
+    ? Object.entries(graficos.ahorro_por_servicio).map(([name, value]) => ({ name, value }))
+    : [];
+
+  // Media móvil 7 días para tendencias de glosas
+  const glosasTendencia = graficos.glosas_tiempo.map((item, index, arr) => {
+    const ventana = arr.slice(Math.max(0, index - 6), index + 1);
+    const media = ventana.reduce((s, d) => s + d.valor, 0) / ventana.length;
+    return { ...item, media7d: parseFloat(media.toFixed(1)) };
+  });
+  const mediaGlosas = graficos.glosas_tiempo.length
+    ? graficos.glosas_tiempo.reduce((s, d) => s + d.valor, 0) / graficos.glosas_tiempo.length
+    : 0;
 
   return (
     <RoleGuard roles={['admin', 'coordinador']}>
@@ -416,21 +440,24 @@ const DashboardPage = () => {
               </CardContent>
             </Card>
 
-            {/* Glosas por Día */}
+            {/* Tendencias de Glosas */}
             <Card>
               <CardHeader>
-                <CardTitle>Glosas Evitadas por Día</CardTitle>
-                <CardDescription>Cantidad de hallazgos resueltos</CardDescription>
+                <CardTitle>Tendencias de Glosas Evitadas</CardTitle>
+                <CardDescription>Hallazgos resueltos por día con media móvil 7 días</CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={graficos.glosas_tiempo}>
+                  <ComposedChart data={glosasTendencia}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="etiqueta" />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="valor" fill={COLORS.success} />
-                  </BarChart>
+                    <Legend />
+                    <ReferenceLine y={mediaGlosas} stroke={COLORS.warning} strokeDasharray="6 3" label={{ value: 'Promedio', position: 'insideTopRight', fontSize: 11, fill: COLORS.warning }} />
+                    <Bar dataKey="valor" name="Glosas/día" fill={COLORS.success} opacity={0.7} />
+                    <Line type="monotone" dataKey="media7d" name="Media 7d" stroke={COLORS.primary} strokeWidth={2} dot={false} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
@@ -484,23 +511,56 @@ const DashboardPage = () => {
             </Card>
           </div>
 
+          {/* Indicadores por Servicio Hospitalario */}
+          {servicioData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Indicadores por Servicio Hospitalario</CardTitle>
+                <CardDescription>Ahorro acumulado por servicio en el período seleccionado</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={servicioData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} />
+                    <Tooltip formatter={(v: number) => [formatCOP(v), 'Ahorro']} />
+                    <Bar dataKey="value" name="Ahorro (COP)" fill={COLORS.cyan} radius={[4, 4, 0, 0]}>
+                      {servicioData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Acciones */}
           <Card>
             <CardHeader>
               <CardTitle>Exportar Reportes</CardTitle>
-              <CardDescription>Descarga reportes en formato PDF o Excel</CardDescription>
+              <CardDescription>
+                Reporte ejecutivo PDF de 1 página · Excel con todos los KPIs · JSON de datos brutos
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-4">
-              <Button onClick={() => handleExecutiveReport()}>
-                <FileText className="h-4 w-4 mr-2" />
+              <Button onClick={handleExecutiveReport} disabled={exportingPdf}>
+                {exportingPdf
+                  ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  : <FileText className="h-4 w-4 mr-2" />}
                 Reporte Ejecutivo PDF
               </Button>
-              <Button variant="outline" onClick={() => handleExport('excel')}>
-                <Download className="h-4 w-4 mr-2" />
-                Exportar CSV
+              <Button variant="outline" onClick={() => handleExport('excel')} disabled={exportingCsv}>
+                {exportingCsv
+                  ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  : <Download className="h-4 w-4 mr-2" />}
+                Exportar Excel (CSV)
               </Button>
-              <Button variant="outline" onClick={() => handleExport('pdf')}>
-                <Download className="h-4 w-4 mr-2" />
+              <Button variant="outline" onClick={() => handleExport('pdf')} disabled={exportingJson}>
+                {exportingJson
+                  ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  : <Download className="h-4 w-4 mr-2" />}
                 Exportar JSON
               </Button>
             </CardContent>

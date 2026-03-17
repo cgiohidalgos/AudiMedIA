@@ -32,6 +32,7 @@ import {
   CheckCircle2,
   Settings,
   Users,
+  Stethoscope,
 } from 'lucide-react';
 
 export type AppView = 'upload' | 'results' | 'control';
@@ -146,6 +147,14 @@ export default function AppNavbar({ currentView, onViewChange, title, extraActio
       action: () => handleNav('/usuarios'),
       active: currentPath === '/usuarios',
       visible: permissions.canManageUsers,
+    },
+    {
+      label: 'Mis Pacientes',
+      icon: <Stethoscope className="h-4 w-4" />,
+      description: 'Resúmenes y alertas de auditoría',
+      action: () => handleNav('/mis-pacientes'),
+      active: currentPath === '/mis-pacientes',
+      visible: permissions.canViewOwnPatients,
     },
   ];
 

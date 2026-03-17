@@ -88,6 +88,8 @@ class PatientControlBoard(BaseModel):
     cama: Optional[str]
     historia: str  # label anonimizado
     diagnostico: str  # "código_cie10 - descripción"
+    codigo_cie10: Optional[str] = None
+    fecha_ingreso: Optional[date] = None
     dias_hospitalizacion: int
     dias_esperados: str
     estudios_pendientes: List[str]  # Lista de estudios sin reporte
