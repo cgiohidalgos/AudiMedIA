@@ -1,6 +1,12 @@
 ﻿import { useState, useEffect, useRef } from 'react';
-import { X, Send, Loader2, MessageSquare, Users, FileText, BookOpen } from 'lucide-react';
+import { X, Send, Loader2, MessageSquare, Users, FileText, BookOpen, Download } from 'lucide-react';
 import { chatApi, patientsApi, type RagReference } from '@/lib/api';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface ChatPanelProps {
   patientId: string;
@@ -134,6 +140,67 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
 
   const showMultiToggle = allPatientIds && allPatientIds.length > 1;
 
+  const exportChat = (format: 'txt' | 'pdf') => {
+    const chatMessages = messages.filter(m => m.role === 'user' || m.role === 'assistant');
+    if (chatMessages.length === 0) return;
+    const today = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const title = chatMode === 'multi' ? `Multi-Historia (${allPatientIds?.length} pacs.)` : patientLabel;
+    const modeLabel = chatMode === 'rag' ? 'RAG (PDF)' : chatMode === 'multi' ? 'Multi-historia' : 'Datos estructurados';
+
+    if (format === 'txt') {
+      const sep = '\u2500'.repeat(60);
+      const lines = [
+        'AudiMedIA \u2014 Log de Chat',
+        `Paciente: ${title}`,
+        `Fecha: ${today}`,
+        `Modo: ${modeLabel}`,
+        sep,
+        '',
+        ...chatMessages.map(m => {
+          const role = m.role === 'user' ? 'AUDITOR' : 'IA';
+          const refs = m.referencias?.length
+            ? `\n  [Refs: p\u00e1gs. ${[...new Set(m.referencias.map(r => r.pagina))].sort((a, b) => a - b).join(', ')}]`
+            : m.ragRefs?.length
+            ? `\n  [Fragmentos PDF: ${m.ragRefs.map(r => `p\u00e1g. ${r.page_number}`).join(', ')}]`
+            : '';
+          return `[${role}]\n${m.content}${refs}\n`;
+        }),
+      ];
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `chat_${patientLabel.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      const rows = chatMessages.map(m => {
+        const role = m.role === 'user' ? 'Auditor' : 'IA';
+        const bg = m.role === 'user' ? '#dbeafe' : '#f3f4f6';
+        const refs = m.referencias?.length
+          ? `<div style="margin-top:4px;font-size:10px;color:#2563eb">Refs: p\u00e1gs. ${[...new Set(m.referencias.map(r => r.pagina))].sort((a, b) => a - b).join(', ')}</div>`
+          : m.ragRefs?.length
+          ? `<div style="margin-top:4px;font-size:10px;color:#2563eb">Fragmentos: ${m.ragRefs.map(r => `p\u00e1g. ${r.page_number}`).join(', ')}</div>`
+          : '';
+        const safe = m.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<div style="background:${bg};border-radius:8px;padding:10px 14px;margin-bottom:8px">
+          <div style="font-size:10px;font-weight:bold;color:#6b7280;margin-bottom:4px;text-transform:uppercase">${role}</div>
+          <div style="font-size:12px;white-space:pre-wrap">${safe}</div>${refs}</div>`;
+      }).join('');
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title} \u2014 Chat Log</title>
+<style>body{font-family:Arial,sans-serif;max-width:700px;margin:30px auto;color:#222}h1{font-size:16px;margin-bottom:4px}.sub{font-size:11px;color:#888;margin-bottom:16px}@media print{body{margin:10px}}</style></head>
+<body><h1>AudiMedIA \u2014 Log de Chat</h1>
+<p class="sub">Paciente: <b>${title}</b> &nbsp;&middot;&nbsp; ${today} &nbsp;&middot;&nbsp; Modo: ${modeLabel} &nbsp;&middot;&nbsp; ${chatMessages.length} mensajes</p>
+<hr/>${rows}</body></html>`;
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (win) { win.onload = () => { win.print(); URL.revokeObjectURL(url); }; }
+    }
+  };
+
   return (
     <aside className="w-80 border-l border-border bg-card flex flex-col h-full shrink-0">
       {/* Header */}
@@ -145,9 +212,30 @@ const ChatPanel = ({ patientId, patientLabel, allPatientIds, onClose, onViewPage
             ? `RAG â€” ${patientLabel}`
             : `Chat â€” ${patientLabel}`}
         </h2>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0">
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="text-muted-foreground hover:text-foreground"
+                title="Exportar log de chat"
+                disabled={messages.filter(m => m.role === 'user' || m.role === 'assistant').length === 0}
+              >
+                <Download className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => exportChat('txt')}>
+                <FileText className="h-3.5 w-3.5 mr-2" />Exportar TXT
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportChat('pdf')}>
+                <FileText className="h-3.5 w-3.5 mr-2" />Exportar PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Mode toggle */}

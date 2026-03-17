@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { patientsApi, PatientControlBoard } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import AppNavbar from '@/components/AppNavbar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,7 +29,13 @@ import {
   TrendingUp,
   Download,
   Filter,
-  RotateCcw
+  RotateCcw,
+  Search,
+  X,
+  Calendar,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
 } from 'lucide-react';
 
 export default function CuadroControlPage() {
@@ -39,8 +46,20 @@ export default function CuadroControlPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filtros
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterRisk, setFilterRisk] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterCIE10, setFilterCIE10] = useState<string>('');
+  const [filterFechaDesde, setFilterFechaDesde] = useState<string>('');
+  const [filterFechaHasta, setFilterFechaHasta] = useState<string>('');
+  const [filterDiasMin, setFilterDiasMin] = useState<string>('');
+  const [filterDiasMax, setFilterDiasMax] = useState<string>('');
+
+  // Ordenamiento
+  type SortField = 'dias_hospitalizacion' | 'riesgo_glosa' | 'exposicion_glosas' | null;
+  type SortDir = 'asc' | 'desc';
+  const [sortField, setSortField] = useState<SortField>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -50,7 +69,8 @@ export default function CuadroControlPage() {
   // Aplicar filtros cuando cambien
   useEffect(() => {
     applyFilters();
-  }, [patients, filterRisk, filterStatus]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patients, searchQuery, filterRisk, filterStatus, filterCIE10, filterFechaDesde, filterFechaHasta, filterDiasMin, filterDiasMax, sortField, sortDir]);
 
   const loadControlBoard = async () => {
     try {
@@ -68,6 +88,15 @@ export default function CuadroControlPage() {
   const applyFilters = () => {
     let filtered = [...patients];
 
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(p =>
+        p.historia?.toLowerCase().includes(q) ||
+        (p.cama?.toLowerCase().includes(q) ?? false) ||
+        p.diagnostico?.toLowerCase().includes(q)
+      );
+    }
+
     if (filterRisk !== 'all') {
       filtered = filtered.filter(p => p.riesgo_glosa === filterRisk);
     }
@@ -76,12 +105,78 @@ export default function CuadroControlPage() {
       filtered = filtered.filter(p => p.audit_status === filterStatus);
     }
 
+    if (filterCIE10.trim()) {
+      const cie = filterCIE10.toUpperCase();
+      filtered = filtered.filter(p =>
+        (p.codigo_cie10?.toUpperCase().includes(cie) ?? false) ||
+        p.diagnostico?.toUpperCase().includes(cie)
+      );
+    }
+
+    if (filterFechaDesde) {
+      filtered = filtered.filter(p =>
+        p.fecha_ingreso != null && new Date(p.fecha_ingreso) >= new Date(filterFechaDesde)
+      );
+    }
+
+    if (filterFechaHasta) {
+      filtered = filtered.filter(p =>
+        p.fecha_ingreso != null && new Date(p.fecha_ingreso) <= new Date(filterFechaHasta)
+      );
+    }
+
+    if (filterDiasMin !== '') {
+      filtered = filtered.filter(p => p.dias_hospitalizacion >= Number(filterDiasMin));
+    }
+
+    if (filterDiasMax !== '') {
+      filtered = filtered.filter(p => p.dias_hospitalizacion <= Number(filterDiasMax));
+    }
+
+    // Ordenamiento por columna
+    if (sortField) {
+      const riskWeight: Record<string, number> = { alto: 3, medio: 2, bajo: 1, pending: 0 };
+      filtered.sort((a, b) => {
+        let cmp = 0;
+        if (sortField === 'dias_hospitalizacion') {
+          cmp = a.dias_hospitalizacion - b.dias_hospitalizacion;
+        } else if (sortField === 'riesgo_glosa') {
+          cmp = (riskWeight[a.riesgo_glosa] ?? 0) - (riskWeight[b.riesgo_glosa] ?? 0);
+        } else if (sortField === 'exposicion_glosas') {
+          cmp = a.exposicion_glosas - b.exposicion_glosas;
+        }
+        return sortDir === 'asc' ? cmp : -cmp;
+      });
+    }
+
     setFilteredPatients(filtered);
   };
 
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDir === 'asc'
+      ? <ChevronUp className="h-3 w-3 ml-1" />
+      : <ChevronDown className="h-3 w-3 ml-1" />;
+  };
+
   const resetFilters = () => {
+    setSearchQuery('');
     setFilterRisk('all');
     setFilterStatus('all');
+    setFilterCIE10('');
+    setFilterFechaDesde('');
+    setFilterFechaHasta('');
+    setFilterDiasMin('');
+    setFilterDiasMax('');
   };
 
   const getRiskColor = (risk: string) => {
@@ -142,14 +237,107 @@ export default function CuadroControlPage() {
   };
 
   const exportToExcel = () => {
-    // TODO: Implementar exportación a Excel del cuadro completo
-    alert('Exportación a Excel - próximamente');
+    const header = [
+      'Cama', 'Historia', 'Diagnóstico', 'CIE-10', 'Fecha Ingreso',
+      'Días Hosp.', 'Días Esperados', 'Estudios Pendientes',
+      'Riesgo Glosa', 'Exposición COP', 'Total Hallazgos', 'Estado',
+    ];
+    const rows = filteredPatients.map(p => [
+      p.cama || '',
+      p.historia || '',
+      p.diagnostico || '',
+      p.codigo_cie10 || '',
+      p.fecha_ingreso ? new Date(p.fecha_ingreso).toLocaleDateString('es-CO') : '',
+      p.dias_hospitalizacion,
+      p.dias_esperados || '',
+      p.estudios_pendientes.join(' | '),
+      getRiskLabel(p.riesgo_glosa),
+      p.exposicion_glosas,
+      p.total_hallazgos,
+      getStatusLabel(p.audit_status),
+    ]);
+    const csvContent = [header, ...rows]
+      .map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cuadro_control_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const exportToPdf = () => {
-    // TODO: Implementar exportación a PDF del cuadro completo
-    alert('Exportación a PDF - próximamente');
+    const today = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const tableRows = filteredPatients.map(p => `
+      <tr>
+        <td>${p.cama || 'N/A'}</td>
+        <td>${p.historia}</td>
+        <td>${p.diagnostico}</td>
+        <td style="text-align:center">${p.dias_hospitalizacion}</td>
+        <td style="text-align:center">${p.dias_esperados || 'N/A'}</td>
+        <td>${p.estudios_pendientes.length > 0 ? p.estudios_pendientes.join(', ') : '—'}</td>
+        <td style="text-align:center;font-weight:bold;color:${p.riesgo_glosa === 'alto' ? '#c0392b' : p.riesgo_glosa === 'medio' ? '#d97706' : '#16a34a'}">${getRiskLabel(p.riesgo_glosa)}</td>
+        <td style="text-align:right">${formatCurrency(p.exposicion_glosas)}</td>
+        <td style="text-align:center">${getStatusLabel(p.audit_status)}</td>
+      </tr>`).join('');
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>Cuadro de Control — ${today}</title>
+<style>
+  body{font-family:Arial,sans-serif;font-size:11px;margin:20px;color:#222}
+  h1{font-size:16px;margin-bottom:4px}
+  .sub{color:#666;font-size:11px;margin-bottom:12px}
+  .kpis{display:flex;gap:12px;margin-bottom:14px}
+  .kpi{background:#f3f4f6;border-radius:6px;padding:8px 14px}
+  .kpi-lbl{font-size:9px;color:#888;text-transform:uppercase}
+  .kpi-val{font-size:16px;font-weight:bold}
+  table{width:100%;border-collapse:collapse}
+  th{background:#1e3a5f;color:#fff;padding:6px 8px;text-align:left;font-size:10px}
+  td{padding:5px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+  tr:nth-child(even) td{background:#f9fafb}
+  @media print{body{margin:0}}
+</style></head>
+<body>
+  <h1>AudiMedIA — Cuadro de Control</h1>
+  <div class="sub">Generado el ${today} &nbsp;·&nbsp; ${filteredPatients.length} pacientes${activeFiltersCount > 0 ? ' (filtros activos)' : ''}</div>
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-lbl">Total</div><div class="kpi-val">${stats.total}</div></div>
+    <div class="kpi" style="background:#fee2e2"><div class="kpi-lbl">Riesgo Alto</div><div class="kpi-val" style="color:#c0392b">${stats.alto}</div></div>
+    <div class="kpi" style="background:#fef9c3"><div class="kpi-lbl">Riesgo Medio</div><div class="kpi-val" style="color:#d97706">${stats.medio}</div></div>
+    <div class="kpi" style="background:#dcfce7"><div class="kpi-lbl">Riesgo Bajo</div><div class="kpi-val" style="color:#16a34a">${stats.bajo}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Exposición Total</div><div class="kpi-val" style="font-size:12px">${formatCurrency(stats.exposicionTotal)}</div></div>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Cama</th><th>Historia</th><th>Diagnóstico</th><th>Días Hosp.</th><th>Días Esp.</th>
+      <th>Estudios Pendientes</th><th>Riesgo</th><th>Exposición</th><th>Estado</th>
+    </tr></thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+</body></html>`;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) {
+      win.onload = () => { win.print(); URL.revokeObjectURL(url); };
+    }
   };
+
+  // Filtros activos
+  const activeFiltersCount = [
+    searchQuery.trim(),
+    filterRisk !== 'all' ? filterRisk : '',
+    filterStatus !== 'all' ? filterStatus : '',
+    filterCIE10.trim(),
+    filterFechaDesde,
+    filterFechaHasta,
+    filterDiasMin,
+    filterDiasMax,
+  ].filter(Boolean).length;
 
   // Estadísticas generales
   const stats = {
@@ -242,20 +430,27 @@ export default function CuadroControlPage() {
       {/* Filtros */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              <CardTitle>Filtros</CardTitle>
-            </div>
-            <Button variant="ghost" size="sm" onClick={resetFilters}>
-              Limpiar filtros
-            </Button>
+          <div className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            <CardTitle>Búsqueda y Filtros Avanzados</CardTitle>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">Nivel de Riesgo</label>
+        <CardContent className="space-y-4">
+          {/* Búsqueda general */}
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por historia, cama o diagnóstico..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {/* Filtros: riesgo, estado, CIE-10 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Nivel de Riesgo</label>
               <Select value={filterRisk} onValueChange={setFilterRisk}>
                 <SelectTrigger>
                   <SelectValue />
@@ -269,8 +464,8 @@ export default function CuadroControlPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">Estado de Auditoría</label>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Estado de Auditoría</label>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger>
                   <SelectValue />
@@ -283,7 +478,71 @@ export default function CuadroControlPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Código CIE-10</label>
+              <Input
+                placeholder="Ej: J18.9, I50, E11..."
+                value={filterCIE10}
+                onChange={(e) => setFilterCIE10(e.target.value)}
+              />
+            </div>
           </div>
+
+          {/* Filtros: fechas y días */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <Calendar className="inline h-3 w-3 mr-1" />Ingreso desde
+              </label>
+              <Input
+                type="date"
+                value={filterFechaDesde}
+                onChange={(e) => setFilterFechaDesde(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <Calendar className="inline h-3 w-3 mr-1" />Ingreso hasta
+              </label>
+              <Input
+                type="date"
+                value={filterFechaHasta}
+                onChange={(e) => setFilterFechaHasta(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Días mín.</label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={filterDiasMin}
+                onChange={(e) => setFilterDiasMin(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Días máx.</label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="365"
+                value={filterDiasMax}
+                onChange={(e) => setFilterDiasMax(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Indicador de filtros activos */}
+          {activeFiltersCount > 0 && (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">
+                {activeFiltersCount} filtro{activeFiltersCount > 1 ? 's' : ''} activo{activeFiltersCount > 1 ? 's' : ''}
+              </Badge>
+              <Button variant="ghost" size="sm" onClick={resetFilters} className="h-6 text-xs px-2">
+                <X className="h-3 w-3 mr-1" />Limpiar todo
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -309,11 +568,32 @@ export default function CuadroControlPage() {
                     <TableHead>Cama</TableHead>
                     <TableHead>Historia</TableHead>
                     <TableHead>Diagnóstico</TableHead>
-                    <TableHead className="text-center">Días Hosp.</TableHead>
+                    <TableHead
+                      className="text-center cursor-pointer select-none hover:bg-muted/50"
+                      onClick={() => toggleSort('dias_hospitalizacion')}
+                    >
+                      <span className="inline-flex items-center justify-center">
+                        Días Hosp.<SortIcon field="dias_hospitalizacion" />
+                      </span>
+                    </TableHead>
                     <TableHead className="text-center">Días Esperados</TableHead>
                     <TableHead>Estudios Pendientes</TableHead>
-                    <TableHead className="text-center">Riesgo Glosa</TableHead>
-                    <TableHead className="text-right">Exposición</TableHead>
+                    <TableHead
+                      className="text-center cursor-pointer select-none hover:bg-muted/50"
+                      onClick={() => toggleSort('riesgo_glosa')}
+                    >
+                      <span className="inline-flex items-center justify-center">
+                        Riesgo Glosa<SortIcon field="riesgo_glosa" />
+                      </span>
+                    </TableHead>
+                    <TableHead
+                      className="text-right cursor-pointer select-none hover:bg-muted/50"
+                      onClick={() => toggleSort('exposicion_glosas')}
+                    >
+                      <span className="inline-flex items-center justify-end">
+                        Exposición<SortIcon field="exposicion_glosas" />
+                      </span>
+                    </TableHead>
                     <TableHead className="text-center">Estado</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
                   </TableRow>

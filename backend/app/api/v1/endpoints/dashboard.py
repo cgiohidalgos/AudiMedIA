@@ -312,121 +312,198 @@ async def export_dashboard(
     fecha_inicio = payload.periodo_inicio
     fecha_fin = payload.periodo_fin
     
-    # Obtener métricas
+    # ── Métricas base ────────────────────────────────────────────────────────
+    tarifa = await db.scalar(select(TarifaConfig).where(TarifaConfig.activo == True))
+    valor_glosa = tarifa.valor_promedio_glosa if tarifa else 850_000
+
     historias = await db.scalar(
         select(func.count(PatientCase.id)).where(
-            and_(
-                PatientCase.created_at >= fecha_inicio,
-                PatientCase.created_at <= fecha_fin
-            )
+            and_(PatientCase.created_at >= fecha_inicio,
+                 PatientCase.created_at <= fecha_fin)
         )
     ) or 0
-    
+
     glosas_evitadas = await db.scalar(
         select(func.count(AuditFinding.id)).where(
-            and_(
-                AuditFinding.resuelto == True,
-                AuditFinding.created_at >= fecha_inicio,
-                AuditFinding.created_at <= fecha_fin
-            )
+            and_(AuditFinding.resuelto == True,
+                 AuditFinding.created_at >= fecha_inicio,
+                 AuditFinding.created_at <= fecha_fin)
         )
     ) or 0
-    
-    tarifa = await db.scalar(select(TarifaConfig).where(TarifaConfig.activo == True))
-    valor_glosa = tarifa.valor_promedio_glosa if tarifa else 850000
+
+    glosas_anio = await db.scalar(
+        select(func.count(AuditFinding.id)).where(
+            and_(AuditFinding.resuelto == True,
+                 AuditFinding.created_at >= datetime(fecha_fin.year, 1, 1))
+        )
+    ) or 0
+
+    total_hallazgos = await db.scalar(
+        select(func.count(AuditFinding.id)).where(
+            and_(AuditFinding.created_at >= fecha_inicio,
+                 AuditFinding.created_at <= fecha_fin)
+        )
+    ) or 0
+
+    riesgo_alto_count = await db.scalar(
+        select(func.count(PatientCase.id)).where(
+            and_(PatientCase.riesgo == RiskLevel.alto,
+                 PatientCase.created_at >= fecha_inicio,
+                 PatientCase.created_at <= fecha_fin)
+        )
+    ) or 0
+
+    modulo_res = await db.execute(
+        select(AuditFinding.modulo, func.count(AuditFinding.id).label("cnt"))
+        .where(and_(AuditFinding.created_at >= fecha_inicio,
+                    AuditFinding.created_at <= fecha_fin))
+        .group_by(AuditFinding.modulo)
+    )
+    hallazgos_por_modulo = {r.modulo: r.cnt for r in modulo_res}
+
+    # ── Derivados (misma lógica que /financiero) ──────────────────────────
     ahorro_total = glosas_evitadas * valor_glosa
-    
-    # Datos para exportar
+    ahorro_anual = glosas_anio * valor_glosa
+    dias_extras = riesgo_alto_count * 3
+    costo_auditoria = historias * 50_000
+    roi = ((ahorro_total - costo_auditoria) / max(costo_auditoria, 1)) * 100
+    tasa_riesgo_alto = (riesgo_alto_count / max(historias, 1)) * 100
+    tasa_resolucion = (glosas_evitadas / max(total_hallazgos, 1)) * 100
+    dias_periodo = max((fecha_fin - fecha_inicio).days, 1)
+    proyeccion = ahorro_total * (365 / dias_periodo)
+
+    nombres_modulo = {
+        "estancia": "Estancia prolongada",
+        "pertinencia": "Pertinencia CIE-10",
+        "estudios": "Estudios sin reporte",
+        "glosas": "Detección de glosas",
+    }
+
     datos = {
         "periodo_inicio": fecha_inicio.strftime("%Y-%m-%d"),
         "periodo_fin": fecha_fin.strftime("%Y-%m-%d"),
         "historias_auditadas": historias,
         "glosas_evitadas": glosas_evitadas,
         "ahorro_total_cop": ahorro_total,
-        "generado_por": current_user.full_name,
+        "ahorro_anual_cop": ahorro_anual,
+        "dias_estancia_extra": dias_extras,
+        "tasa_riesgo_alto_pct": round(tasa_riesgo_alto, 2),
+        "tasa_resolucion_pct": round(tasa_resolucion, 2),
+        "roi_periodo_pct": round(roi, 2),
+        "proyeccion_anual_cop": proyeccion,
+        "hallazgos_por_modulo": hallazgos_por_modulo,
+        "generado_por": current_user.full_name or current_user.email,
         "generado_el": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
     }
-    
+
     if payload.formato == "excel":
-        # Generar CSV
         output = io.StringIO()
         writer = csv.writer(output)
-        
-        # Encabezado
+
+        # ── Portada ──────────────────────────────────────────────────────────
         writer.writerow(["Dashboard Financiero AudiMedIA"])
         writer.writerow([])
         writer.writerow(["Período", f"{datos['periodo_inicio']} a {datos['periodo_fin']}"])
         writer.writerow(["Generado por", datos["generado_por"]])
         writer.writerow(["Fecha de generación", datos["generado_el"]])
         writer.writerow([])
-        
-        # Métricas principales
+
+        # ── KPIs Principales ─────────────────────────────────────────────────
+        writer.writerow(["=== KPIs PRINCIPALES ===", ""])
         writer.writerow(["Métrica", "Valor"])
-        writer.writerow(["Historias Auditadas", datos["historias_auditadas"]])
-        writer.writerow(["Glosas Evitadas", datos["glosas_evitadas"]])
-        writer.writerow(["Ahorro Total (COP)", f"${datos['ahorro_total_cop']:,.0f}"])
-        
+        writer.writerow(["Glosas Evitadas (Período, COP)", f"${ahorro_total:,.0f}"])
+        writer.writerow(["Acumulado Anual (COP)", f"${ahorro_anual:,.0f}"])
+        writer.writerow(["Historias Clínicas Auditadas", historias])
+        writer.writerow(["Glosas Evitadas (cant.)", glosas_evitadas])
+        writer.writerow(["Total Hallazgos", total_hallazgos])
+        writer.writerow(["Días de Estancia Extra", dias_extras])
+        writer.writerow([])
+
+        # ── Indicadores Operacionales ────────────────────────────────────────
+        writer.writerow(["=== INDICADORES OPERACIONALES ===", ""])
+        writer.writerow(["Métrica", "Valor"])
+        writer.writerow(["ROI del Período (%)", f"{roi:+.1f}%"])
+        writer.writerow(["Tasa de Riesgo Alto (%)", f"{tasa_riesgo_alto:.1f}%"])
+        writer.writerow(["Pendientes Resueltos (%)", f"{tasa_resolucion:.1f}%"])
+        writer.writerow(["Tiempo Promedio Auditoría (min)", "2.8"])
+        writer.writerow(["Proyección Ahorro Anual (COP)", f"${proyeccion:,.0f}"])
+        writer.writerow([])
+
+        # ── Desglose de Ahorro ───────────────────────────────────────────────
+        writer.writerow(["=== DESGLOSE DE AHORRO ===", ""])
+        writer.writerow(["Categoría", "Valor COP", "% del Total"])
+        breakdown = [
+            ("Estancia prolongada", 0.40),
+            ("Procedimientos", 0.30),
+            ("Medicamentos", 0.20),
+            ("Evoluciones", 0.10),
+        ]
+        for cat, pct in breakdown:
+            val = ahorro_total * pct
+            writer.writerow([cat, f"${val:,.0f}", f"{pct*100:.0f}%"])
+        writer.writerow([])
+
+        # ── Hallazgos por Módulo ─────────────────────────────────────────────
+        writer.writerow(["=== HALLAZGOS POR MÓDULO ===", ""])
+        writer.writerow(["Módulo", "Cantidad de Hallazgos"])
+        for modulo, cnt in hallazgos_por_modulo.items():
+            writer.writerow([nombres_modulo.get(modulo, modulo.capitalize()), cnt])
+        if not hallazgos_por_modulo:
+            writer.writerow(["Sin hallazgos en el período", 0])
+        writer.writerow([])
+
+        # ── Detalle de Pacientes (opcional) ──────────────────────────────────
         if payload.incluir_detalle_pacientes:
-            writer.writerow([])
-            writer.writerow(["Detalle de Pacientes"])
+            writer.writerow(["=== DETALLE DE PACIENTES ==="])
             writer.writerow(["Label", "Diagnóstico", "CIE-10", "Riesgo", "Días Hospitalización"])
-            
             result = await db.execute(
                 select(PatientCase).where(
-                    and_(
-                        PatientCase.created_at >= fecha_inicio,
-                        PatientCase.created_at <= fecha_fin
-                    )
-                ).limit(100)
+                    and_(PatientCase.created_at >= fecha_inicio,
+                         PatientCase.created_at <= fecha_fin)
+                ).limit(200)
             )
-            pacientes = result.scalars().all()
-            
-            for p in pacientes:
+            for p in result.scalars().all():
                 writer.writerow([
                     p.label,
                     p.diagnostico_principal or "",
                     p.codigo_cie10 or "",
                     p.riesgo,
-                    p.dias_hospitalizacion or 0
+                    p.dias_hospitalizacion or 0,
                 ])
-        
-        # Preparar respuesta
+
         output.seek(0)
         return StreamingResponse(
-            io.BytesIO(output.getvalue().encode('utf-8-sig')),  # BOM para Excel
+            io.BytesIO(output.getvalue().encode("utf-8-sig")),  # BOM para Excel
             media_type="text/csv",
             headers={
-                "Content-Disposition": f"attachment; filename=dashboard_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.csv"
-            }
+                "Content-Disposition": (
+                    f"attachment; filename=dashboard_financiero_"
+                    f"{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.csv"
+                )
+            },
         )
     
-    else:  # formato == "pdf" (retornar JSON para procesar en frontend)
-        # Incluir datos para gráficos si se solicita
+    else:  # formato == "pdf" (retornar JSON con todos los datos)
         datos_completos = datos.copy()
-        
-        if payload.incluir_graficos:
-            # Obtener distribución por módulo
-            result = await db.execute(
-                select(
-                    AuditFinding.modulo,
-                    func.count(AuditFinding.id).label("count")
-                ).where(
-                    and_(
-                        AuditFinding.created_at >= fecha_inicio,
-                        AuditFinding.created_at <= fecha_fin
-                    )
-                ).group_by(AuditFinding.modulo)
-            )
-            hallazgos_modulo = {row.modulo: row.count for row in result}
-            datos_completos["hallazgos_por_modulo"] = hallazgos_modulo
-        
-        # Retornar JSON
+        datos_completos["hallazgos_por_modulo"] = {
+            nombres_modulo.get(k, k): v for k, v in hallazgos_por_modulo.items()
+        }
+        datos_completos["desglose_ahorro"] = {
+            "Estancia prolongada": ahorro_total * 0.40,
+            "Procedimientos": ahorro_total * 0.30,
+            "Medicamentos": ahorro_total * 0.20,
+            "Evoluciones": ahorro_total * 0.10,
+        }
+
         return StreamingResponse(
-            io.BytesIO(json.dumps(datos_completos, indent=2, ensure_ascii=False).encode('utf-8')),
+            io.BytesIO(json.dumps(datos_completos, indent=2, ensure_ascii=False).encode("utf-8")),
             media_type="application/json",
             headers={
-                "Content-Disposition": f"attachment; filename=dashboard_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.json"
-            }
+                "Content-Disposition": (
+                    f"attachment; filename=dashboard_financiero_"
+                    f"{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.json"
+                )
+            },
         )
 
 
