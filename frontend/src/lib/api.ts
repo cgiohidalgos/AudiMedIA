@@ -113,13 +113,16 @@ export class ApiError extends Error {
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
+export type AppRole = 'admin' | 'auditor' | 'coordinador' | 'equipo_medico';
+
 export interface ApiUser {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'auditor' | 'coordinador' | 'equipo_medico';
+  role: AppRole;
   is_active: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface LoginResponse {
@@ -142,6 +145,46 @@ export const authApi = {
     }),
 
   me: () => request<ApiUser>('/users/me'),
+};
+
+// ─── Users (admin CRUD) ─────────────────────────────────────────────────────────
+
+export interface UserCreatePayload {
+  email: string;
+  full_name: string;
+  role: AppRole;
+  password: string;
+}
+
+export interface UserUpdatePayload {
+  full_name?: string;
+  role?: AppRole;
+  is_active?: boolean;
+}
+
+export const usersApi = {
+  list: () => request<ApiUser[]>('/users/'),
+
+  create: (payload: UserCreatePayload) =>
+    request<ApiUser>('/users/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  update: (id: string, payload: UserUpdatePayload) =>
+    request<ApiUser>(`/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/users/${id}`, { method: 'DELETE' }),
+
+  resetPassword: (id: string, newPassword: string) =>
+    request<ApiUser>(`/users/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ new_password: newPassword }),
+    }),
 };
 
 // ─── Upload ─────────────────────────────────────────────────────────────────
@@ -506,4 +549,189 @@ export const recommendationsApi = {
 
   summary: (patientId: string) =>
     request<RecommendationSummary>(`/recommendations/patients/${patientId}/summary`),
+};
+
+// ─── Configuración del Sistema ────────────────────────────────────────────────
+
+export interface TarifaConfig {
+  id: string;
+  tarifa_dia_hospitalizacion: number;
+  tarifa_dia_uci: number;
+  tarifa_dia_intermedio: number;
+  porcentaje_glosas_historico: number;
+  glosa_evolucion_porcentaje: number;
+  valor_promedio_glosa: number;
+  institucion_nombre: string;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TarifaConfigUpdate {
+  tarifa_dia_hospitalizacion?: number;
+  tarifa_dia_uci?: number;
+  tarifa_dia_intermedio?: number;
+  porcentaje_glosas_historico?: number;
+  glosa_evolucion_porcentaje?: number;
+  valor_promedio_glosa?: number;
+  institucion_nombre?: string;
+}
+
+export interface EPSContrato {
+  id: string;
+  nombre_eps: string;
+  tarifa_especial: number | null;
+  vigencia_desde: string;
+  vigencia_hasta: string;
+  notas: string | null;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EPSContratoPayload {
+  nombre_eps: string;
+  tarifa_especial?: number | null;
+  vigencia_desde: string;
+  vigencia_hasta: string;
+  notas?: string | null;
+  activo?: boolean;
+}
+
+export interface ServicioHospitalario {
+  id: string;
+  nombre: string;
+  medico_jefe: string | null;
+  correo_notificaciones: string | null;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServicioPayload {
+  nombre: string;
+  medico_jefe?: string | null;
+  correo_notificaciones?: string | null;
+  activo?: boolean;
+}
+
+export interface SistemaParams {
+  llm_model: string;
+  llm_max_tokens: number;
+  openai_key_configured: boolean;
+  openai_key_preview: string;
+  max_pdfs_simultaneos: number;
+  retencion_datos_dias: number;
+  anonimizacion_activa: boolean;
+}
+
+// ─── Notificaciones ──────────────────────────────────────────────────────────
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  patient_id: string | null;
+  titulo: string;
+  mensaje: string;
+  tipo: string;
+  leida: boolean;
+  created_at: string;
+}
+
+export interface NotificationCount {
+  total: number;
+  no_leidas: number;
+}
+
+export interface NotifyTeamResponse {
+  notificaciones_creadas: number;
+  message: string;
+}
+
+export const notificationsApi = {
+  list: (leida?: boolean) => {
+    const qs = leida !== undefined ? `?leida=${leida}` : '';
+    return request<AppNotification[]>(`/notifications/${qs}`);
+  },
+
+  count: () => request<NotificationCount>('/notifications/count'),
+
+  markRead: (id: string) =>
+    request<AppNotification>(`/notifications/${id}/read`, { method: 'POST' }),
+
+  markAllRead: () =>
+    request<{ message: string }>('/notifications/read-all', { method: 'POST' }),
+
+  delete: (id: string) =>
+    request<void>(`/notifications/${id}`, { method: 'DELETE' }),
+
+  pendingSummary: (patientId: string) => {
+    const token = getToken();
+    return fetch(`${BASE_URL}/notifications/patients/${patientId}/summary`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async res => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, body.detail ?? 'Error al generar resumen');
+      }
+      return res.text();
+    });
+  },
+
+  notifyTeam: (patientId: string) =>
+    request<NotifyTeamResponse>(`/notifications/patients/${patientId}/notify-team`, {
+      method: 'POST',
+    }),
+};
+
+// ─── Configuración del Sistema ────────────────────────────────────────────────
+
+export const configApi = {
+  getTarifas: () =>
+    request<TarifaConfig>('/config/tarifas'),
+
+  updateTarifas: (payload: TarifaConfigUpdate) =>
+    request<TarifaConfig>('/config/tarifas', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  listEPS: () =>
+    request<EPSContrato[]>('/config/eps'),
+
+  createEPS: (payload: EPSContratoPayload) =>
+    request<EPSContrato>('/config/eps', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateEPS: (id: string, payload: Partial<EPSContratoPayload>) =>
+    request<EPSContrato>(`/config/eps/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteEPS: (id: string) =>
+    request<void>(`/config/eps/${id}`, { method: 'DELETE' }),
+
+  listServicios: () =>
+    request<ServicioHospitalario[]>('/config/servicios'),
+
+  createServicio: (payload: ServicioPayload) =>
+    request<ServicioHospitalario>('/config/servicios', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateServicio: (id: string, payload: Partial<ServicioPayload>) =>
+    request<ServicioHospitalario>(`/config/servicios/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteServicio: (id: string) =>
+    request<void>(`/config/servicios/${id}`, { method: 'DELETE' }),
+
+  getSistema: () =>
+    request<SistemaParams>('/config/sistema'),
 };
